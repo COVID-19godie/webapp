@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物理不物理：全功能声音实验室</title>
+    <style>
+        :root {
+            --calc-color: #ff5722;
+            --piano-color: #1976d2;
+            --bg-color: #fafafa;
+            --text-color: #333;
+        }
+        body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding-bottom: 50px; }
+        
+        /* 启动遮罩 */
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;
+        }
+        #start-btn {
+            padding: 15px 40px; font-size: 24px; background: var(--piano-color); color: white;
+            border: none; border-radius: 50px; cursor: pointer; margin-top: 20px;
+            box-shadow: 0 0 20px rgba(25, 118, 210, 0.5); animation: pulse 1.5s infinite;
+        }
+        
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; margin-top: 40px; }
+        h2 { border-left: 5px solid #333; padding-left: 15px; margin-top: 50px; }
+        
+        /* 通用可视化画布 */
+        canvas { width: 100%; height: 150px; background: #222; border-radius: 8px; margin-top: 10px; display: block;}
+        
+        /* 1. 计算器样式 */
+        .calc-wrapper { background: #eee; padding: 20px; border-radius: 10px; border: 2px solid #ccc; max-width: 400px; margin: 20px auto; }
+        .calc-screen { 
+            background: #9ea7a0; padding: 15px; font-family: 'Courier New', monospace; 
+            font-size: 24px; text-align: right; margin-bottom: 15px; border-radius: 4px; border: 2px solid #777;
+        }
+        .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .btn-calc {
+            padding: 15px 0; background: #fff; border: 1px solid #999; border-radius: 4px;
+            font-size: 18px; cursor: pointer; box-shadow: 0 3px 0 #777; transition: transform 0.1s;
+        }
+        .btn-calc:active, .btn-calc.active { transform: translateY(3px); box-shadow: none; background: #ffccbc; }
+        .btn-orange { background: var(--calc-color); color: white; border-color: #d84315; box-shadow: 0 3px 0 #bf360c; }
+
+        /* 2. 钢琴样式 */
+        .piano-wrapper { display: flex; justify-content: center; margin: 20px 0; position: relative; height: 160px; }
+        .key { 
+            width: 40px; height: 160px; background: white; border: 1px solid #bbb; 
+            border-radius: 0 0 4px 4px; cursor: pointer; z-index: 1; position: relative;
+            display: flex; align-items: flex-end; justify-content: center; padding-bottom: 10px; font-size: 12px; color: #999;
+        }
+        .key.black { 
+            background: #333; color: white; height: 100px; width: 30px; 
+            margin: 0 -15px; z-index: 2; border: 1px solid #000;
+        }
+        .key:active, .key.active { background: #ddd; transform: scaleY(0.98); transform-origin: top; }
+        .key.black:active, .key.black.active { background: #000; }
+
+        /* 3. 傅里叶分析样式 */
+        .fourier-controls { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; }
+        .f-btn {
+            padding: 10px 20px; border: 2px solid transparent; cursor: pointer; font-weight: bold; border-radius: 4px;
+        }
+        .f-btn.calc-mode { border-color: var(--calc-color); color: var(--calc-color); background: white; }
+        .f-btn.calc-mode.active { background: var(--calc-color); color: white; }
+        .f-btn.piano-mode { border-color: var(--piano-color); color: var(--piano-color); background: white; }
+        .f-btn.piano-mode.active { background: var(--piano-color); color: white; }
+
+        .analysis-box { display: flex; gap: 10px; flex-wrap: wrap; }
+        .analysis-col { flex: 1; min-width: 300px; }
+        .label { text-align: center; font-size: 12px; color: #666; margin-top: 5px; }
+
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h1>🎵 声音物理实验室</h1>
+        <p>点击按钮解锁：计算器卡农、钢琴谐波与傅里叶变换</p>
+        <button id="start-btn">开启电磁狂欢</button>
+    </div>
+
+    <div class="container">
+        <h1>用计算器弹《卡农》？不，这是傅里叶级数</h1>
+        <p style="text-align: center; color: #666;">文 / 你的物理“外挂”</p>
+
+        <h2>01. 计算器演奏 (Square Wave)</h2>
+        <p>计算器发出的是“方波”，声音生硬，像 8-bit 游戏音乐。</p>
+        
+        <div class="calc-wrapper">
+            <div class="calc-screen" id="calc-display">0</div>
+            <div class="calc-grid">
+                <button class="btn-calc" data-note="C5">1</button>
+                <button class="btn-calc" data-note="D5">2</button>
+                <button class="btn-calc" data-note="E5">3</button>
+                <button class="btn-calc btn-orange" onclick="playCanon()">▶ 播放卡农</button>
+                
+                <button class="btn-calc" data-note="F5">4</button>
+                <button class="btn-calc" data-note="G5">5</button>
+                <button class="btn-calc" data-note="A5">6</button>
+                <button class="btn-calc btn-orange" onclick="stopAudio()">■ 停止</button>
+                
+                <button class="btn-calc" data-note="B5">7</button>
+                <button class="btn-calc" data-note="C6">8</button>
+                <button class="btn-calc" data-note="D6">9</button>
+                <button class="btn-calc" onclick="playNoise()">AC</button>
+            </div>
+        </div>
+        <canvas id="scope-canvas"></canvas>
+        <div class="label">↑ 实时示波器：观察方波的棱角</div>
+
+        <h2>02. 钢琴演奏 (Complex Wave)</h2>
+        <p>钢琴包含丰富的“谐波” (Harmonics)，声音圆润。</p>
+        
+        <div class="piano-wrapper" id="piano-keyboard">
+            </div>
+        <p style="text-align: center; font-size: 14px; color: #666;">点击琴键试听，注意与计算器音色的区别</p>
+
+        <h2 style="color: #673ab7; border-color: #673ab7;">03. 傅里叶显微镜 (FFT Analysis)</h2>
+        <p>在这里，我们用算法将声音拆解。请切换下方模式，观察<strong>“频谱图”</strong>的区别。</p>
+
+        <div class="fourier-controls">
+            <button class="f-btn calc-mode active" onclick="setMode('calc')">👉 听/看 计算器 (方波)</button>
+            <button class="f-btn piano-mode" onclick="setMode('piano')">👉 听/看 钢琴 (谐波)</button>
+        </div>
+
+        <div class="analysis-box">
+            <div class="analysis-col">
+                <canvas id="fft-canvas"></canvas>
+                <div class="label">频域 (Spectrum)：看谐波的分布</div>
+            </div>
+        </div>
+        <div id="analysis-text" style="background: #e1bee7; padding: 15px; border-radius: 8px; margin-top: 10px; color: #4a148c;">
+            <strong>当前状态：</strong> 计算器的频谱像一根根孤立的柱子（主要是奇次谐波），所以听起来“空”且“硬”。
+        </div>
+    </div>
+
+    <script>
+        // --- 音频上下文与全局变量 ---
+        let audioCtx;
+        let analyser;
+        let isRunning = false;
+        let currentOscillators = [];
+        
+        // 乐理频率表
+        const notes = {
+            'C4': 261.63, 'C#4': 277.18, 'D4': 293.66, 'D#4': 311.13, 'E4': 329.63, 'F4': 349.23, 'F#4': 369.99, 'G4': 392.00, 'G#4': 415.30, 'A4': 440.00, 'A#4': 466.16, 'B4': 493.88,
+            'C5': 523.25, 'C#5': 554.37, 'D5': 587.33, 'D#5': 622.25, 'E5': 659.25, 'F5': 698.46, 'F#5': 739.99, 'G5': 783.99, 'G#5': 830.61, 'A5': 880.00, 'A#5': 932.33, 'B5': 987.77,
+            'C6': 1046.50, 'D6': 1174.66
+        };
+
+        // --- 初始化 ---
+        document.getElementById('start-btn').addEventListener('click', () => {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            analyser.connect(audioCtx.destination);
+            
+            document.getElementById('overlay').style.display = 'none';
+            isRunning = true;
+            initVisualizers();
+            initPianoKeys();
+        });
+
+        // --- 1. 核心发声引擎 ---
+        
+        // 播放单音
+        // type: 'square' (计算器) 或 'custom' (钢琴)
+        function playTone(freq, type, duration = 0.5) {
+            if(!audioCtx) return;
+
+            const gainNode = audioCtx.createGain();
+            gainNode.connect(analyser);
+
+            if (type === 'square') {
+                // 计算器：纯方波
+                const osc = audioCtx.createOscillator();
+                osc.type = 'square';
+                osc.frequency.value = freq;
+                osc.connect(gainNode);
+                
+                // 计算器包络：快速起落
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+                currentOscillators.push(osc);
+            } else {
+                // 钢琴：合成多个谐波
+                const harmonics = [1, 0.5, 0.3, 0.1, 0.05]; // 谐波振幅递减
+                harmonics.forEach((amp, index) => {
+                    const osc = audioCtx.createOscillator();
+                    osc.type = index % 2 === 0 ? 'sine' : 'triangle'; // 混合波形
+                    osc.frequency.value = freq * (index + 1);
+                    
+                    const hGain = audioCtx.createGain();
+                    hGain.gain.value = amp * 0.3; // 总体音量控制
+                    
+                    // 钢琴包络：冲击感 + 延音
+                    hGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    hGain.gain.linearRampToValueAtTime(amp * 0.3, audioCtx.currentTime + 0.05);
+                    hGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+
+                    osc.connect(hGain);
+                    hGain.connect(gainNode);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 1.5);
+                    currentOscillators.push(osc);
+                });
+            }
+        }
+
+        // --- 2. 计算器功能 ---
+        
+        // 绑定计算器按键
+        document.querySelectorAll('.btn-calc[data-note]').forEach(btn => {
+            btn.addEventListener('mousedown', () => {
+                const note = btn.dataset.note;
+                document.getElementById('calc-display').innerText = notes[note];
+                btn.classList.add('active');
+                // 在计算器模式下发声
+                playTone(notes[note], 'square');
+            });
+            btn.addEventListener('mouseup', () => btn.classList.remove('active'));
+        });
+
+        // 自动演奏卡农
+        let canonTimeout;
+        function playCanon() {
+            stopAudio();
+            const melody = [
+                {n:'E5', d:400}, {n:'D5', d:400}, {n:'C5', d:400}, {n:'B4', d:400}, 
+                {n:'A4', d:400}, {n:'G4', d:400}, {n:'A4', d:400}, {n:'B4', d:400},
+                {n:'C5', d:400}, {n:'B4', d:400}, {n:'A4', d:400}, {n:'G4', d:400},
+                {n:'F4', d:400}, {n:'E4', d:400}, {n:'F4', d:400}, {n:'G4', d:400} 
+            ];
+            
+            let timeOffset = 0;
+            melody.forEach((noteObj, i) => {
+                canonTimeout = setTimeout(() => {
+                    // 高亮对应按键
+                    const btn = document.querySelector(`.btn-calc[data-note="${noteObj.n}"]`) 
+                             || document.querySelector(`.btn-calc[data-note="${noteObj.n.replace('4','5')}"]`); // 简单映射
+                    if(btn) {
+                        btn.classList.add('active');
+                        setTimeout(()=>btn.classList.remove('active'), 200);
+                    }
+                    document.getElementById('calc-display').innerText = noteObj.n;
+                    playTone(notes[noteObj.n], 'square', 0.3);
+                }, timeOffset);
+                timeOffset += noteObj.d;
+            });
+        }
+
+        function stopAudio() {
+            // 清除所有定时器和振荡器
+            let id = window.setTimeout(function() {}, 0);
+            while (id--) { window.clearTimeout(id); }
+            // 简单重置
+            document.getElementById('calc-display').innerText = "0";
+        }
+        
+        function playNoise() {
+             playTone(100, 'square', 0.1); // 模拟按AC的滴声
+             document.getElementById('calc-display').innerText = "0";
+        }
+
+        // --- 3. 钢琴功能 ---
+        function initPianoKeys() {
+            const pianoDiv = document.getElementById('piano-keyboard');
+            const keys = [
+                {n:'C4', c:'white'}, {n:'C#4', c:'black'}, {n:'D4', c:'white'}, {n:'D#4', c:'black'},
+                {n:'E4', c:'white'}, {n:'F4', c:'white'}, {n:'F#4', c:'black'}, {n:'G4', c:'white'},
+                {n:'G#4', c:'black'}, {n:'A4', c:'white'}, {n:'A#4', c:'black'}, {n:'B4', c:'white'},
+                {n:'C5', c:'white'}
+            ];
+
+            keys.forEach(k => {
+                const div = document.createElement('div');
+                div.className = `key ${k.c}`;
+                div.dataset.note = k.n;
+                if(k.c === 'white') div.innerText = k.n;
+                div.addEventListener('mousedown', () => {
+                    playTone(notes[k.n], 'custom');
+                    div.classList.add('active');
+                });
+                div.addEventListener('mouseup', () => div.classList.remove('active'));
+                div.addEventListener('mouseleave', () => div.classList.remove('active'));
+                pianoDiv.appendChild(div);
+            });
+        }
+
+        // --- 4. 傅里叶演示控制 ---
+        let demoInterval;
+        function setMode(mode) {
+            // 停止之前的自动演示
+            clearInterval(demoInterval);
+            
+            // 更新UI
+            document.querySelectorAll('.f-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.f-btn.${mode}-mode`).classList.add('active');
+            
+            const text = document.getElementById('analysis-text');
+            
+            if (mode === 'calc') {
+                text.innerHTML = "<strong>计算器模式：</strong> 正在以 1Hz 的速度自动触发方波。请观察上方绿色频谱，你会看到明显的奇数倍峰值（1x, 3x, 5x...），中间是空的。这就是声音刺耳的物理原因。";
+                text.style.background = "#ffccbc"; text.style.color = "#d84315";
+                
+                // 自动触发声音以便观察
+                demoInterval = setInterval(() => {
+                    playTone(440, 'square', 0.8);
+                }, 1000);
+            } else {
+                text.innerHTML = "<strong>钢琴模式：</strong> 正在触发模拟钢琴声。请观察频谱，你会看到基音后面跟着一连串密集的、平滑衰减的谐波（1x, 2x, 3x, 4x...）。这种丰富的频率组合让声音听起来温暖。";
+                text.style.background = "#bbdefb"; text.style.color = "#0d47a1";
+                 // 自动触发声音以便观察
+                demoInterval = setInterval(() => {
+                    playTone(440, 'custom', 1.2);
+                }, 1500);
+            }
+        }
+
+        // --- 5. 可视化绘制 (Canvas) ---
+        function initVisualizers() {
+            const scopeCtx = document.getElementById('scope-canvas').getContext('2d');
+            const fftCtx = document.getElementById('fft-canvas').getContext('2d');
+            
+            analyser.fftSize = 2048;
+            const bufferLength = analyser.frequencyBinCount;
+            const timeData = new Uint8Array(bufferLength);
+            const freqData = new Uint8Array(bufferLength);
+
+            function draw() {
+                requestAnimationFrame(draw);
+                
+                // 1. 绘制波形 (示波器)
+                analyser.getByteTimeDomainData(timeData);
+                scopeCtx.fillStyle = '#222';
+                scopeCtx.fillRect(0, 0, scopeCtx.canvas.width, scopeCtx.canvas.height);
+                scopeCtx.lineWidth = 2;
+                scopeCtx.strokeStyle = '#00e676'; // 绿色波形
+                scopeCtx.beginPath();
+                
+                let sliceWidth = scopeCtx.canvas.width * 1.0 / bufferLength;
+                let x = 0;
+                for(let i = 0; i < bufferLength; i++) {
+                    let v = timeData[i] / 128.0;
+                    let y = v * scopeCtx.canvas.height / 2;
+                    if(i === 0) scopeCtx.moveTo(x, y);
+                    else scopeCtx.lineTo(x, y);
+                    x += sliceWidth;
+                }
+                scopeCtx.stroke();
+
+                // 2. 绘制频谱 (傅里叶)
+                analyser.getByteFrequencyData(freqData);
+                fftCtx.fillStyle = '#222';
+                fftCtx.fillRect(0, 0, fftCtx.canvas.width, fftCtx.canvas.height);
+                
+                const barWidth = (fftCtx.canvas.width / bufferLength) * 2.5;
+                let barX = 0;
+                
+                for(let i = 0; i < bufferLength; i++) {
+                    let barHeight = freqData[i] / 2; // 缩放一下
+                    // 根据频率高度变色
+                    fftCtx.fillStyle = `rgb(${barHeight + 100}, 50, 200)`;
+                    fftCtx.fillRect(barX, fftCtx.canvas.height - barHeight, barWidth, barHeight);
+                    barX += barWidth + 1;
+                }
+            }
+            draw();
+        }
+    </script>
+</body>
+</html>

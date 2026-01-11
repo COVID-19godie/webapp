@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZMG Lab - 虚拟仿真实验室</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* =========================================
+           CSS 样式系统
+           ========================================= */
+        :root {
+            --bg-body: #0f1115;
+            --bg-surface: #181b21;
+            --bg-hover: #22262e;
+            --text-main: #e0e0e0;
+            --text-sub: #94a3b8;
+            --border: #2d3340;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.15);
+            --nav-glass: rgba(15, 17, 21, 0.8);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="light"] {
+            --bg-body: #f8fafc;
+            --bg-surface: #ffffff;
+            --bg-hover: #f1f5f9;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --border: #e2e8f0;
+            --accent: #0ea5e9;
+            --accent-glow: rgba(14, 165, 233, 0.1);
+            --nav-glass: rgba(255, 255, 255, 0.8);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body); color: var(--text-main); min-height: 100vh; overflow-y: scroll; transition: background 0.3s, color 0.3s; }
+
+        /* 布局容器 */
+        .app-wrapper { max-width: 1200px; margin: 0 auto; padding: 0 24px; min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* 顶部导航 */
+        .navbar { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; position: sticky; top: 0; z-index: 100; background: var(--nav-glass); backdrop-filter: blur(12px); border-bottom: 1px solid transparent; transition: border 0.3s; }
+        .scrolled .navbar { border-bottom-color: var(--border); }
+
+        .brand { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+        .brand-icon { width: 40px; height: 40px; background: linear-gradient(135deg, var(--accent), #8b5cf6); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.2rem; box-shadow: 0 4px 12px var(--accent-glow); }
+        .brand-text h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.5px; line-height: 1.2; }
+        .brand-text span { font-size: 0.75rem; color: var(--text-sub); font-weight: 400; display: block; }
+
+        .controls { display: flex; gap: 12px; }
+        .btn-icon { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-main); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--transition); }
+        .btn-icon:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); transform: translateY(-2px); }
+
+        /* 主内容区域切换动画 */
+        .view-container { flex: 1; position: relative; margin-top: 40px; }
+        .view-section { 
+            position: absolute; top: 0; left: 0; width: 100%; 
+            opacity: 0; pointer-events: none; transform: translateY(20px); 
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .view-section.active { opacity: 1; pointer-events: auto; transform: translateY(0); position: relative; }
+
+        /* === 首页 (Home View) === */
+        .hero { text-align: center; margin-bottom: 60px; max-width: 600px; margin-left: auto; margin-right: auto; }
+        .hero h2 { font-size: 2.5rem; margin-bottom: 16px; background: linear-gradient(to right, var(--text-main), var(--text-sub)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero p { color: var(--text-sub); font-size: 1.1rem; line-height: 1.6; }
+
+        .category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; padding-bottom: 60px; }
+        
+        .cat-card {
+            background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px;
+            cursor: pointer; transition: var(--transition); position: relative; overflow: hidden;
+            display: flex; flex-direction: column; align-items: flex-start; gap: 16px;
+        }
+        .cat-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--cat-color); opacity: 0; transition: opacity 0.3s; }
+        .cat-card:hover { transform: translateY(-5px); border-color: var(--cat-color); box-shadow: 0 10px 40px -10px var(--accent-glow); }
+        .cat-card:hover::before { opacity: 1; }
+        
+        .cat-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--bg-hover); color: var(--cat-color); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: var(--transition); }
+        .cat-card:hover .cat-icon { background: var(--cat-color); color: #fff; }
+        .cat-title { font-size: 1.25rem; font-weight: 600; }
+        .cat-desc { font-size: 0.9rem; color: var(--text-sub); line-height: 1.5; }
+        .cat-count { margin-top: auto; font-size: 0.8rem; font-weight: 600; color: var(--text-sub); background: var(--bg-body); padding: 4px 12px; border-radius: 20px; }
+
+        /* === 列表页 (List View) === */
+        .breadcrumb { margin-bottom: 30px; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--text-sub); }
+        .back-btn { cursor: pointer; color: var(--text-main); font-weight: 600; display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; transition: var(--transition); }
+        .back-btn:hover { border-color: var(--accent); color: var(--accent); }
+        
+        .list-header { margin-bottom: 30px; }
+        .list-title { font-size: 1.8rem; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+        .list-title i { color: var(--current-color); }
+
+        .experiment-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; padding-bottom: 60px; }
+        
+        .exp-card {
+            display: flex; flex-direction: column; background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 24px; text-decoration: none; color: inherit;
+            transition: var(--transition); height: 100%; position: relative;
+        }
+        .exp-card:hover { border-color: var(--current-color); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .exp-icon { font-size: 1.5rem; color: var(--text-sub); margin-bottom: 16px; transition: 0.3s; }
+        .exp-card:hover .exp-icon { color: var(--current-color); transform: scale(1.1); }
+        .exp-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; color: var(--text-main); }
+        .exp-desc { font-size: 0.85rem; color: var(--text-sub); line-height: 1.6; flex: 1; }
+        .exp-action { margin-top: 20px; font-size: 0.85rem; font-weight: 600; color: var(--current-color); display: flex; align-items: center; gap: 6px; opacity: 0; transform: translateX(-10px); transition: 0.3s; }
+        .exp-card:hover .exp-action { opacity: 1; transform: translateX(0); }
+
+        .footer { text-align: center; padding: 40px 0; color: var(--text-sub); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: auto; }
+
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            .hero h2 { font-size: 2rem; }
+            .category-grid { grid-template-columns: 1fr; }
+            .brand-text span { display: none; }
+            .modal-box { width: 95%; padding: 24px; }
+        }
+
+        /* =========================================
+           3. 弹窗样式 (Added)
+           ========================================= */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px); /* 毛玻璃背景 */
+            z-index: 2000; /* 确保在最顶层 */
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        
+        .modal-box {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            width: 90%; max-width: 520px;
+            padding: 32px; border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transform: translateY(20px) scale(0.95);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+        .modal-overlay.active .modal-box { transform: translateY(0) scale(1); }
+
+        .modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+        .modal-header i { font-size: 1.5rem; color: var(--accent); }
+        .modal-header h3 { font-size: 1.5rem; color: var(--text-main); font-weight: 700; }
+        
+        .modal-content p { color: var(--text-sub); line-height: 1.7; margin-bottom: 12px; font-size: 1rem; text-align: justify; }
+        .modal-content strong { color: var(--accent); font-weight: 600; }
+        
+        .modal-btn {
+            width: 100%; margin-top: 24px; padding: 14px;
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 12px;
+            font-size: 1rem; font-weight: 600; cursor: pointer;
+            transition: var(--transition);
+        }
+        .modal-btn:hover { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 4px 12px var(--accent-glow); }
+
+    </style>
+</head>
+<body>
+
+    <div class="app-wrapper">
+        <header class="navbar">
+            <div class="brand" onclick="goHome()">
+                <div class="brand-icon"><i class="fas fa-atom"></i></div>
+                <div class="brand-text">
+                    <h1>ZMG Lab</h1>
+                    <span>虚拟仿真教学平台</span>
+                </div>
+            </div>
+            <div class="controls">
+                <button class="btn-icon" onclick="toggleTheme()" title="切换主题">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+            </div>
+        </header>
+
+        <div class="view-container">
+            
+            <section id="view-home" class="view-section active">
+                <div class="hero">
+                    <h2>探索物理世界的底层逻辑</h2>
+                    <p>选择一个学科领域，开始您的探索之旅。</p>
+                </div>
+                <div id="categoryGrid" class="category-grid">
+                    </div>
+            </section>
+
+            <section id="view-list" class="view-section">
+                <div class="breadcrumb">
+                    <div class="back-btn" onclick="goHome()">
+                        <i class="fas fa-arrow-left"></i> 返回大厅
+                    </div>
+                    <span style="color:var(--border)">|</span>
+                    <span id="currentCatName">学科</span>
+                </div>
+                
+                <div class="list-header">
+                    <h2 class="list-title">
+                        <i id="currentCatIcon" class="fas fa-flask"></i>
+                        <span id="currentCatTitle">加载中...</span>
+                    </h2>
+                    <p style="color:var(--text-sub)" id="currentCatDesc">模块描述...</p>
+                </div>
+
+                <div id="experimentGrid" class="experiment-grid">
+                    </div>
+            </section>
+
+        </div>
+
+        <footer class="footer">
+            &copy; 2026 南阳一中 张铭戈 | Build via ZMG-Engine
+        </footer>
+    </div>
+
+    <div id="devModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h3>开发测试阶段说明</h3>
+            </div>
+            <div class="modal-content">
+                <p>欢迎来到 ZMG Lab。本网站尚处于<strong>开发构建阶段</strong>，网页程序可能存在少量 Bug，期待各位老师同学与我反馈（公众号：<strong>戈悟志理琢瑷成器</strong>）。</p>
+                <p>由于本人精力有限，部分程序<strong>未经过完整严密的测试</strong>即上传，请各位老师在使用时注意分辨。</p>
+                <p>仿真中甚至可能存在<strong>物理原理层面的疏漏或错误</strong>，恳请各位老师在使用过程中帮忙验证正确性，不胜感激！</p>
+            </div>
+            <button class="modal-btn" onclick="closeModal()">我已知晓，开始探索</button>
+        </div>
+    </div>
+
+    <script>
+        /* =========================================
+           1. 数据配置中心 (只需修改此处即可添加实验)
+           ========================================= */
+        const DATA = [
+            // === 力学 (Mechanics) ===
+            { id: 'pendulum', title: '交互式单摆', cat: 'mechanics', path: './pendulum/index.html', desc: '自定义重力与阻尼的单摆仿真，包含 RK4 物理引擎与相图。' },
+            { id: 'shm', title: '简谐运动与能量', cat: 'mechanics', path: './shm/index.html', desc: 'SHM 运动受力分析与动能、势能实时转化曲线。' },
+            { id: 'conveyor', title: '传送带模型', cat: 'mechanics', path: './conveyor/index.html', desc: '牛顿定律在传送带上的应用，摩擦力突变分析。' },
+            { id: 'block', title: '板块模型', cat: 'mechanics', path: './block_system/index.html', desc: '多物体摩擦力与相对运动，板块耦合动力学。' },
+            { id: 'pursuit', title: '追及相遇', cat: 'mechanics', path: './pursuit/index.html', desc: 'v-t 图像与位移图像的可视化追及问题解析。' },
+            { id: 'energy', title: '机械能守恒', cat: 'mechanics', path: './energy/index.html', desc: '重力势能与动能转化的实时图表与小球运动。' },
+            { id: 'vibrator', title: '振子与波', cat: 'mechanics', path: './vibrator/index.html', desc: '机械波的产生、传播与叠加原理演示。' },
+            { id: 'ang_freq', title: '角频率演示', cat: 'mechanics', path: './Angular_Frequency/index.html', desc: '匀速圆周运动投影与简谐运动的关系。' },
+
+            // === 电磁学 (Electricity) ===
+            { id: 'part_2d', title: '带电粒子运动 (2D)', cat: 'electricity', path: './electrodynamics_2D/index.html', desc: '复合场中的粒子轨迹全屏仿真，支持自定义场强与初速度。' },
+            { id: 'part_3d', title: '带电粒子 (3D)', cat: 'electricity', path: './electrodynamics_3D/index.html', desc: '三维空间中的洛伦兹力螺旋运动与磁聚焦。' },
+            { id: 'part_1', title: '电场运动基础', cat: 'electricity', path: './electrodynamics_1/index.html', desc: '电场力作用下的类平抛与加速运动模型。' },
+            { id: 'gen', title: '交流发电机', cat: 'electricity', path: './generator/index.html', desc: '磁通量变化、感应电动势与电流产生的微观过程。' },
+            { id: 'rod1', title: '动杆问题 I', cat: 'electricity', path: './Moving_rod_problem_1/index.html', desc: '电磁感应中的单杆切割模型与电路分析。' },
+            { id: 'rod2', title: '动杆问题 II', cat: 'electricity', path: './Moving_rod_problem_2/index.html', desc: '双杆模型、安培力相互作用与复杂电路。' },
+
+            // === 天体物理 (Astrophysics) ===
+            { id: 'sat_track', title: '卫星星下点轨迹', cat: 'astrophysics', path: './1_6_7/index.html', desc: '地球同步与中轨道卫星轨迹的 3D 投影与星下点画法。' },
+            { id: 'multi_star', title: '星际指挥官', cat: 'astrophysics', path: './Subpoint/index.html', desc: '专业级多卫星轨道参数自定义，支持墨卡托投影与 3D 视图。' },
+            { id: 'blackhole', title: '黑洞引力透镜', cat: 'astrophysics', path: './black_hole/index.html', desc: '基于广义相对论的光线追踪渲染，模拟黑洞吸积盘视觉效果。' },
+            { id: 'star_low', title: '恒星演化 (低质量)', cat: 'astrophysics', path: './star_evolution_low/index.html', desc: '红矮星到白矮星的演化全过程模拟。' },
+            { id: 'star_mid', title: '恒星演化 (中质量)', cat: 'astrophysics', path: './star_evolution_mid/mid.html', desc: '太阳类恒星的主序、红巨星及白矮星演化。' },
+            { id: 'star_high', title: '恒星演化 (高质量)', cat: 'astrophysics', path: './star_evolution_high/index.html', desc: '超新星爆发、中子星与黑洞的形成。' },
+
+            // === 声学与波 (Acoustics) ===
+            { id: 'audio', title: '物理声音实验室', cat: 'acoustics', path: './audio/index.html', desc: '声波合成、频谱分析与虚拟乐器（钢琴/古琴）演奏。' },
+            { id: '8bit', title: '8-Bit vs 钢琴', cat: 'acoustics', path: './8bit_vs_piano/index.html', desc: '方波与复杂波形的音色对比实验。' },
+
+            // === 化学 (Chemistry) ===
+            { id: 'chem', title: 'ChemSim 多金属', cat: 'chemistry', path: './Metal-Acid/index.html', desc: '金属与酸盐溶液反应的微观模拟，支持沉淀与气泡效果。' }
+        ];
+
+        // 学科元数据定义
+        const CATEGORIES = {
+            'mechanics':    { title: '经典力学', icon: 'fas fa-cogs', color: '#3b82f6', desc: '牛顿定律、运动学、能量与动量守恒、机械振动与波。' },
+            'electricity':  { title: '电磁学',   icon: 'fas fa-bolt', color: '#eab308', desc: '电场、磁场、电磁感应、电路分析与粒子运动。' },
+            'astrophysics': { title: '天体物理', icon: 'fas fa-globe-asia', color: '#06b6d4', desc: '天体运行轨道、万有引力定律、恒星演化与相对论效应。' },
+            'acoustics':    { title: '声学与波', icon: 'fas fa-music', color: '#ec4899', desc: '声波的产生与传播、频率分析、多普勒效应与乐器物理。' },
+            'chemistry':    { title: '化学交互', icon: 'fas fa-flask', color: '#22c55e', desc: '物质的微观反应机理、离子运动与化学平衡可视化。' },
+            'others':       { title: '综合实验', icon: 'fas fa-cube', color: '#94a3b8', desc: '跨学科或其他物理仿真模型。' }
+        };
+
+        /* =========================================
+           2. 核心逻辑引擎
+           ========================================= */
+        
+        const views = {
+            home: document.getElementById('view-home'),
+            list: document.getElementById('view-list')
+        };
+
+        // 初始化
+        window.onload = () => {
+            initTheme();
+            renderCategories();
+            
+            // 延迟 0.5 秒显示开发声明弹窗 (Added)
+            setTimeout(() => {
+                document.getElementById('devModal').classList.add('active');
+            }, 500);
+        };
+
+        // 弹窗关闭逻辑 (Added)
+        function closeModal() {
+            document.getElementById('devModal').classList.remove('active');
+        }
+
+        // 渲染主页分类卡片
+        function renderCategories() {
+            const grid = document.getElementById('categoryGrid');
+            grid.innerHTML = '';
+
+            for (const [key, conf] of Object.entries(CATEGORIES)) {
+                // 计算该分类下的实验数量
+                const count = DATA.filter(item => item.cat === key).length;
+                if (count === 0) continue; // 不显示空分类
+
+                const card = document.createElement('div');
+                card.className = 'cat-card';
+                card.style.setProperty('--cat-color', conf.color);
+                card.onclick = () => openCategory(key);
+
+                card.innerHTML = `
+                    <div class="cat-icon"><i class="${conf.icon}"></i></div>
+                    <div>
+                        <h3 class="cat-title">${conf.title}</h3>
+                        <p class="cat-desc">${conf.desc}</p>
+                    </div>
+                    <div class="cat-count">${count} 个实验模块</div>
+                `;
+                grid.appendChild(card);
+            }
+        }
+
+        // 打开二级菜单 (分类详情)
+        function openCategory(catKey) {
+            const conf = CATEGORIES[catKey];
+            const items = DATA.filter(item => item.cat === catKey);
+
+            // 更新头部信息
+            document.getElementById('currentCatName').innerText = conf.title;
+            document.getElementById('currentCatTitle').innerText = conf.title;
+            document.getElementById('currentCatDesc').innerText = conf.desc;
+            document.getElementById('currentCatIcon').className = conf.icon;
+            
+            // 设置主题色变量 (给子卡片 hover 用)
+            document.documentElement.style.setProperty('--current-color', conf.color);
+
+            // 渲染实验卡片
+            const grid = document.getElementById('experimentGrid');
+            grid.innerHTML = '';
+            
+            items.forEach(item => {
+                const card = document.createElement('a');
+                card.className = 'exp-card';
+                card.href = item.path;
+                card.target = '_blank'; // 新标签页打开
+
+                card.innerHTML = `
+                    <div class="exp-icon"><i class="${conf.icon}"></i></div>
+                    <h4 class="exp-title">${item.title}</h4>
+                    <p class="exp-desc">${item.desc}</p>
+                    <div class="exp-action">点击进入 <i class="fas fa-chevron-right"></i></div>
+                `;
+                grid.appendChild(card);
+            });
+
+            // 切换视图动画
+            switchView('list');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // 返回主页
+        function goHome() {
+            switchView('home');
+        }
+
+        // 视图切换辅助
+        function switchView(target) {
+            if (target === 'home') {
+                views.list.classList.remove('active');
+                setTimeout(() => views.home.classList.add('active'), 100);
+            } else {
+                views.home.classList.remove('active');
+                setTimeout(() => views.list.classList.add('active'), 100);
+            }
+        }
+
+        // 主题切换逻辑
+        function initTheme() {
+            const saved = localStorage.getItem('zmg-theme') || 'dark';
+            applyTheme(saved);
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            applyTheme(next);
+        }
+
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('zmg-theme', theme);
+            document.getElementById('themeIcon').className = theme === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>原生恒星演化引擎 (无需下载)</title>
+    <style>
+        :root { --bg: #000005; --panel: rgba(10, 20, 30, 0.8); --accent: #00f3ff; --warn: #ff3355; }
+        body { margin: 0; overflow: hidden; background: var(--bg); font-family: 'Segoe UI', monospace; color: #fff; user-select: none; }
+        canvas { display: block; }
+        
+        /* UI 界面 */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .panel { 
+            position: absolute; pointer-events: auto; background: var(--panel);
+            backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1);
+            padding: 20px; border-radius: 4px; border-left: 3px solid var(--accent);
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            transition: 0.2s;
+        }
+        
+        #controls { top: 20px; left: 20px; width: 280px; }
+        #logs { bottom: 20px; right: 20px; width: 320px; height: 200px; overflow-y: auto; font-size: 11px; font-family: 'Consolas'; }
+        
+        h2 { margin: 0 0 10px 0; color: var(--accent); font-size: 14px; letter-spacing: 2px; text-transform: uppercase; border-bottom: 1px solid #334; padding-bottom: 5px; }
+        
+        input[type=range] { width: 100%; margin: 10px 0; accent-color: var(--accent); cursor: pointer; height: 4px; }
+        .val { float: right; color: var(--accent); font-weight: bold; }
+        
+        button { 
+            width: 100%; background: linear-gradient(90deg, rgba(0,243,255,0.1), transparent);
+            border: 1px solid var(--accent); color: var(--accent); padding: 12px; 
+            cursor: pointer; font-weight: bold; text-transform: uppercase; margin-top: 15px; 
+            transition: 0.2s; letter-spacing: 1px;
+        }
+        button:hover { background: var(--accent); color: #000; box-shadow: 0 0 15px var(--accent); }
+        button.danger { border-color: var(--warn); color: var(--warn); }
+        button.danger:hover { background: var(--warn); color: white; }
+
+        .log-item { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed rgba(255,255,255,0.05); }
+        .t-warn { color: var(--warn); } .t-info { color: var(--accent); } .t-sys { color: #667; }
+        
+        #tooltip { position: absolute; bottom: 20px; left: 20px; color: #556; font-size: 12px; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<canvas id="main-canvas"></canvas>
+
+<div id="ui-layer">
+    <div id="controls" class="panel">
+        <h2>Physics Engine Core</h2>
+        
+        <div style="margin-bottom:5px; font-size:12px; color:#aaa;">Stellar Mass (M☉)</div>
+        <input type="range" id="mass-slider" min="0.5" max="40" step="0.5" value="1.0">
+        <div style="text-align:right; font-weight:bold; color:var(--accent); font-size:18px;" id="mass-val">1.0 M☉</div>
+        
+        <div style="margin-top:15px; font-size:12px; color:#aaa;">Simulation Speed</div>
+        <input type="range" id="speed-slider" min="0.1" max="5.0" step="0.1" value="1.0">
+
+        <button id="evolve-btn">Initiate Evolution</button>
+        <button id="reset-btn" class="danger">Reset System</button>
+    </div>
+    
+    <div id="logs" class="panel">
+        <h2>Event Log</h2>
+        <div id="log-content"></div>
+    </div>
+    
+    <div id="tooltip">SCROLL to Zoom | DRAG to Pan Space</div>
+</div>
+
+<script>
+/**
+ * 原生 JS 物理引擎 - 无依赖版
+ * 使用 Canvas 2D 模拟粒子流体和引力透镜
+ */
+
+// === 核心配置 ===
+const CANVAS = document.getElementById('main-canvas');
+const CTX = CANVAS.getContext('2d', { alpha: false }); // 优化性能
+const LOGS = document.getElementById('log-content');
+
+let state = {
+    mass: 1.0,
+    time: 0,
+    speed: 1.0,
+    stage: 'main', // main, giant, collapse, supernova, remnant
+    remnantType: null, // 'wd', 'ns', 'bh'
+    scale: 1.0,    // 缩放
+    offsetX: 0,    // 偏移
+    offsetY: 0,
+    shake: 0       // 屏幕震动
+};
+
+// 粒子系统
+let particles = [];
+let stars = []; // 背景星
+
+// === 物理常量与颜色 ===
+const COLORS = {
+    M_CLASS: [255, 100, 50],   // 红矮星
+    G_CLASS: [255, 220, 150],  // 黄矮星 (太阳)
+    O_CLASS: [100, 200, 255],  // 蓝超巨星
+    GIANT:   [255, 50, 20],    // 红巨星
+    WD:      [200, 240, 255],  // 白矮星
+    NS:      [0, 255, 255],    // 中子星
+    BH:      [0, 0, 0]         // 黑洞
+};
+
+// === 初始化 ===
+function init() {
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // 生成背景星空
+    for(let i=0; i<300; i++) {
+        stars.push({
+            x: (Math.random()-0.5) * 3000,
+            y: (Math.random()-0.5) * 3000,
+            size: Math.random() * 2,
+            brightness: Math.random()
+        });
+    }
+
+    log("Engine initialized. Ready.", "t-sys");
+    loop();
+}
+
+function resize() {
+    CANVAS.width = window.innerWidth;
+    CANVAS.height = window.innerHeight;
+}
+
+// === 交互逻辑 ===
+let isDragging = false;
+let lastX, lastY;
+
+window.addEventListener('mousedown', e => { isDragging = true; lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', e => {
+    if(isDragging) {
+        state.offsetX += e.clientX - lastX;
+        state.offsetY += e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+    }
+});
+window.addEventListener('wheel', e => {
+    e.preventDefault();
+    state.scale *= (e.deltaY > 0 ? 0.9 : 1.1);
+    state.scale = Math.max(0.1, Math.min(state.scale, 10)); // 限制缩放
+}, { passive: false });
+
+document.getElementById('mass-slider').addEventListener('input', e => {
+    state.mass = parseFloat(e.target.value);
+    document.getElementById('mass-val').innerText = state.mass.toFixed(1) + " M☉";
+    if(state.stage === 'main') log(`Mass adjusted to ${state.mass}`, "t-sys");
+});
+document.getElementById('speed-slider').addEventListener('input', e => state.speed = parseFloat(e.target.value));
+
+document.getElementById('evolve-btn').addEventListener('click', startEvolution);
+document.getElementById('reset-btn').addEventListener('click', resetSystem);
+
+// === 演化逻辑 ===
+function startEvolution() {
+    if(state.stage !== 'main') return;
+    
+    log("Main sequence ended. Hydrogen fuel depleted.", "t-warn");
+    state.stage = 'giant';
+    
+    // 演化动画
+    let timer = 0;
+    const evolveInterval = setInterval(() => {
+        timer++;
+        
+        // 1. 红巨星膨胀阶段
+        if(timer < 100) {
+            // 只是为了视觉延迟
+        } 
+        // 2. 坍缩阶段
+        else if (timer === 100) {
+            log("Core collapse initiated...", "t-warn");
+            state.stage = 'collapse';
+        }
+        // 3. 爆发阶段
+        else if (timer === 150) {
+            clearInterval(evolveInterval);
+            triggerSupernova();
+        }
+    }, 20);
+}
+
+function triggerSupernova() {
+    if (state.mass < 8) {
+        // 低质量：行星状星云 + 白矮星
+        log("Outer layers shed. Planetary Nebula formed.", "t-info");
+        spawnExplosion(2000, 5, [255, 100, 100]);
+        state.stage = 'remnant';
+        state.remnantType = 'wd';
+    } else {
+        // 大质量：超新星爆发
+        log("SUPERNOVA DETONATION!", "t-warn");
+        state.shake = 50; // 屏幕震动
+        spawnExplosion(8000, 15, [100, 200, 255]); // 更多、更快、更蓝
+        state.stage = 'remnant';
+        state.remnantType = state.mass > 20 ? 'bh' : 'ns';
+        
+        if(state.remnantType === 'bh') log("Black Hole formed.", "t-info");
+        else log("Neutron Star formed.", "t-info");
+    }
+}
+
+function spawnExplosion(count, speedBase, colorBase) {
+    for(let i=0; i<count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 50; // 初始散布
+        const speed = (Math.random() * 0.5 + 0.5) * speedBase;
+        
+        particles.push({
+            x: Math.cos(angle) * dist,
+            y: Math.sin(angle) * dist,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 1.0,
+            decay: 0.002 + Math.random() * 0.005,
+            size: Math.random() * 3 + 1,
+            color: [
+                colorBase[0] + (Math.random()-0.5)*50,
+                colorBase[1] + (Math.random()-0.5)*50,
+                colorBase[2] + (Math.random()-0.5)*50
+            ]
+        });
+    }
+}
+
+function resetSystem() {
+    state.stage = 'main';
+    state.remnantType = null;
+    particles = [];
+    state.shake = 0;
+    state.scale = 1.0;
+    state.offsetX = 0;
+    state.offsetY = 0;
+    log("System Reset.", "t-sys");
+}
+
+// === 渲染循环 (核心) ===
+function loop() {
+    requestAnimationFrame(loop);
+    state.time += 0.05 * state.speed;
+
+    // 1. 清除画布 (带微弱拖影，制造动态模糊感)
+    CTX.fillStyle = 'rgba(0, 0, 5, 0.4)'; // 不完全清除，留残影
+    CTX.fillRect(0, 0, CANVAS.width, CANVAS.height);
+
+    // 2. 震动计算
+    let shakeX = 0, shakeY = 0;
+    if(state.shake > 0) {
+        shakeX = (Math.random()-0.5) * state.shake;
+        shakeY = (Math.random()-0.5) * state.shake;
+        state.shake *= 0.9;
+        if(state.shake < 0.5) state.shake = 0;
+    }
+
+    // 3. 设置视图矩阵
+    CTX.save();
+    CTX.translate(CANVAS.width/2 + state.offsetX + shakeX, CANVAS.height/2 + state.offsetY + shakeY);
+    CTX.scale(state.scale, state.scale);
+
+    // --- 渲染层级 ---
+
+    // A. 背景星 (模拟引力透镜扭曲)
+    drawBackgroundStars();
+
+    // B. 粒子系统 (爆发物)
+    drawParticles();
+
+    // C. 恒星本体 / 遗迹
+    drawCentralBody();
+
+    CTX.restore();
+}
+
+// --- 绘制函数 ---
+
+function drawBackgroundStars() {
+    CTX.fillStyle = 'white';
+    for(let s of stars) {
+        let x = s.x;
+        let y = s.y;
+
+        // 黑洞引力透镜特效 (简单的径向推挤)
+        if(state.remnantType === 'bh') {
+            const dist = Math.sqrt(x*x + y*y);
+            const force = (state.mass * 2000) / (dist + 1); // 简单的引力透镜公式模拟
+            if(dist > 0 && dist < 1000) {
+                // 将星星向外推，模拟光线弯曲
+                x += (x/dist) * force;
+                y += (y/dist) * force;
+            }
+            // 视界内吞噬
+            if(dist < state.mass * 2) continue;
+        }
+
+        CTX.globalAlpha = 0.5 + Math.sin(state.time + x)*0.5; // 闪烁
+        CTX.beginPath();
+        CTX.arc(x, y, s.size, 0, Math.PI*2);
+        CTX.fill();
+    }
+    CTX.globalAlpha = 1.0;
+}
+
+function drawCentralBody() {
+    let r, color, glowColor;
+    let t = state.time;
+
+    // 状态机绘制
+    if (state.stage === 'main') {
+        // 主序星：大小和颜色随质量变化
+        r = 30 * (1 + state.mass/10);
+        let heat = Math.min(1, state.mass / 20);
+        color = lerpColor(COLORS.M_CLASS, COLORS.O_CLASS, heat);
+        
+        // 呼吸效果 (星震)
+        r += Math.sin(t * 2) * 0.5;
+        
+        drawGlowingOrb(0, 0, r, color);
+        
+    } else if (state.stage === 'giant') {
+        // 红巨星：巨大、红色、不稳定
+        r = 150 * (1 + state.mass/20);
+        color = COLORS.GIANT;
+        // 表面剧烈波动
+        r += Math.sin(t * 5) * 2 + Math.cos(t * 3) * 2;
+        drawGlowingOrb(0, 0, r, color);
+        
+    } else if (state.stage === 'collapse') {
+        // 坍缩中：迅速变小
+        r = 10;
+        drawGlowingOrb(0, 0, r, [255, 255, 255]);
+        
+    } else if (state.stage === 'remnant') {
+        if (state.remnantType === 'wd') {
+            // 白矮星
+            drawGlowingOrb(0, 0, 8, COLORS.WD);
+        } else if (state.remnantType === 'ns') {
+            // 中子星 (脉冲星)
+            drawGlowingOrb(0, 0, 5, COLORS.NS);
+            // 喷流
+            CTX.globalCompositeOperation = 'lighter';
+            CTX.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+            CTX.lineWidth = 2;
+            CTX.save();
+            CTX.rotate(t * 2); // 快速旋转
+            CTX.beginPath(); CTX.moveTo(0,0); CTX.lineTo(0, -1000); CTX.stroke();
+            CTX.beginPath(); CTX.moveTo(0,0); CTX.lineTo(0, 1000); CTX.stroke();
+            CTX.restore();
+            CTX.globalCompositeOperation = 'source-over';
+        } else if (state.remnantType === 'bh') {
+            // 黑洞
+            drawBlackHole();
+        }
+    }
+}
+
+function drawGlowingOrb(x, y, r, c) {
+    // 1. 外发光 (Corona)
+    let grad = CTX.createRadialGradient(x, y, r*0.5, x, y, r*3);
+    grad.addColorStop(0, `rgba(${c[0]}, ${c[1]}, ${c[2]}, 1)`);
+    grad.addColorStop(0.4, `rgba(${c[0]}, ${c[1]}, ${c[2]}, 0.2)`);
+    grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
+    
+    CTX.fillStyle = grad;
+    CTX.beginPath(); CTX.arc(x, y, r*3, 0, Math.PI*2); CTX.fill();
+
+    // 2. 核心 (Core)
+    CTX.fillStyle = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+    CTX.beginPath(); CTX.arc(x, y, r, 0, Math.PI*2); CTX.fill();
+}
+
+function drawBlackHole() {
+    const r = state.mass * 3; // 视界大小
+    
+    // 吸积盘 (扁平椭圆)
+    CTX.save();
+    CTX.scale(1, 0.3); // 压扁
+    let grad = CTX.createRadialGradient(0, 0, r*1.5, 0, 0, r*6);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.1, '#ff5500'); // 内圈热
+    grad.addColorStop(0.4, '#aa0000'); // 红移
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    
+    // 多普勒效应模拟：左亮右暗
+    CTX.fillStyle = grad;
+    CTX.beginPath(); CTX.arc(0, 0, r*6, 0, Math.PI*2); CTX.fill();
+    CTX.restore();
+
+    // 事件视界 (纯黑本体)
+    CTX.fillStyle = 'black';
+    CTX.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // 光子环
+    CTX.lineWidth = 1;
+    
+    CTX.beginPath(); CTX.arc(0, 0, r, 0, Math.PI*2); CTX.fill();
+    CTX.stroke(); // 绘制光子环
+}
+
+function drawParticles() {
+    // 使用 'lighter' 混合模式实现星云般的体积光叠加效果
+    CTX.globalCompositeOperation = 'lighter';
+    
+    for(let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        
+        // 物理更新
+        p.x += p.vx * state.speed;
+        p.y += p.vy * state.speed;
+        p.life -= p.decay * state.speed;
+        
+        // 黑洞吸积逻辑
+        if(state.remnantType === 'bh') {
+            let dx = p.x, dy = p.y;
+            let distSq = dx*dx + dy*dy;
+            let force = (state.mass * 100) / (distSq + 1); // 引力
+            let dist = Math.sqrt(distSq);
+            
+            if(dist > state.mass * 3) { // 视界外
+                p.vx -= (dx/dist) * force * 0.05;
+                p.vy -= (dy/dist) * force * 0.05;
+            } else {
+                p.life = 0; // 被吞噬
+            }
+        }
+        
+        // 移除死粒子
+        if(p.life <= 0) {
+            particles.splice(i, 1);
+            continue;
+        }
+        
+        // 绘制
+        CTX.fillStyle = `rgba(${p.color[0]}, ${p.color[1]}, ${p.color[2]}, ${p.life})`;
+        CTX.beginPath();
+        CTX.arc(p.x, p.y, p.size, 0, Math.PI*2);
+        CTX.fill();
+    }
+    
+    CTX.globalCompositeOperation = 'source-over'; // 恢复默认
+}
+
+// === 工具函数 ===
+function log(msg, cls) {
+    const el = document.createElement('div');
+    el.className = `log-item ${cls}`;
+    el.innerText = `> ${msg}`;
+    LOGS.prepend(el);
+}
+
+function lerpColor(c1, c2, t) {
+    return [
+        c1[0] + (c2[0] - c1[0]) * t,
+        c1[1] + (c2[1] - c1[1]) * t,
+        c1[2] + (c2[2] - c1[2]) * t
+    ];
+}
+
+// 启动
+init();
+
+</script>
+</body>
+</html>

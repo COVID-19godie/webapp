@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多星仿真 - 星际指挥官终极版</title>
+    <style>
+        /* --- 0. 字体与基础设置 --- */
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap');
+        
+        * { box-sizing: border-box; user-select: none; outline: none; }
+        body { 
+            margin: 0; padding: 0; 
+            background: #020406; 
+            color: #aaceff; 
+            font-family: "Rajdhani", sans-serif; 
+            overflow: hidden; 
+            height: 100vh; width: 100vw;
+        }
+
+        /* --- 1. 布局 --- */
+        #layout {
+            display: grid;
+            width: 100vw; height: 100vh;
+            grid-template-columns: 280px 380px 1fr; 
+            grid-template-rows: 1fr 320px;
+            gap: 6px; padding: 6px;
+            background-image: 
+                linear-gradient(rgba(0, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* --- 2. 面板风格 --- */
+        .panel {
+            background: rgba(6, 10, 16, 0.9);
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            position: relative; overflow: hidden;
+            display: flex; flex-direction: column;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+        }
+
+        /* --- 关键修复：Canvas 强制撑满 --- */
+        .panel canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            flex: 1; /* 占据 flex 容器剩余空间 */
+        }
+
+        .panel::before {
+            content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                linear-gradient(to right, #00ffff 2px, transparent 2px) 0 0,
+                linear-gradient(to bottom, #00ffff 2px, transparent 2px) 0 0,
+                linear-gradient(to left, #00ffff 2px, transparent 2px) 100% 0,
+                linear-gradient(to bottom, #00ffff 2px, transparent 2px) 100% 0,
+                linear-gradient(to right, #00ffff 2px, transparent 2px) 0 100%,
+                linear-gradient(to top, #00ffff 2px, transparent 2px) 0 100%,
+                linear-gradient(to left, #00ffff 2px, transparent 2px) 100% 100%,
+                linear-gradient(to top, #00ffff 2px, transparent 2px) 100% 100%;
+            background-size: 8px 8px; background-repeat: no-repeat;
+            opacity: 0.4; pointer-events: none; z-index: 10;
+        }
+        
+        .scanline {
+            position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            background-size: 100% 4px; z-index: 5; opacity: 0.3;
+        }
+
+        .panel-header {
+            font-family: "Share Tech Mono", monospace;
+            font-size: 11px; color: #00ffff;
+            padding: 4px 8px; 
+            background: linear-gradient(90deg, rgba(0,255,255,0.1), transparent);
+            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+            flex-shrink: 0; z-index: 6;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        #ctrl-box { grid-column: 1 / 2; grid-row: 1 / 3; border-top: 2px solid #ff3333; background: rgba(5, 8, 12, 0.95); }
+        #lat-box { grid-column: 2 / 3; grid-row: 1 / 2; border-right: none; }
+        #earth-box { 
+            grid-column: 2 / 3; grid-row: 2 / 3; 
+            border: 1px solid rgba(255, 200, 0, 0.4); 
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.8);
+            cursor: crosshair;
+        }
+        #earth-box.expanded { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; border: none; background: #000; }
+        #map-box { grid-column: 3 / 4; grid-row: 1 / 2; border-left: 1px dashed rgba(0, 255, 255, 0.2); border-bottom: 1px dashed rgba(0, 255, 255, 0.2); }
+        #lon-box { grid-column: 3 / 4; grid-row: 2 / 3; border-top: none; border-left: 1px solid rgba(0, 255, 255, 0.1); }
+
+        .ctrl-group { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); position:relative; }
+        .ctrl-group::after { content:''; position:absolute; left:0; bottom:0; width:4px; height:4px; background:#00ffff; opacity:0.5; }
+        label { display: block; font-size: 10px; color: #667788; margin-bottom: 6px; letter-spacing: 1px; }
+        .val-disp { float: right; color: #00ffff; font-family: "Share Tech Mono"; font-size: 12px; }
+        input[type=range] { width: 100%; height: 4px; background: #223; appearance: none; margin-top:5px; border: 1px solid #445; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; width: 10px; height: 16px; background: #00ffff; cursor: pointer; border: 1px solid #fff; box-shadow: 0 0 10px #00ffff; }
+        select { width: 100%; background: #0a0e14; color: #00ffff; border: 1px solid #234; padding: 8px; font-size: 11px; margin-top: 5px; font-family: "Rajdhani"; text-transform: uppercase;}
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; background: rgba(0,255,255,0.02); padding: 8px; border-left: 2px solid #445; transition:0.2s;}
+        .toggle-row:hover { border-left-color: #00ffff; background: rgba(0,255,255,0.05); }
+        input[type=checkbox] { accent-color: #00ffff; cursor: pointer; }
+        button {
+            width: 100%; margin-top: 20px; padding: 12px; 
+            background: rgba(0, 255, 255, 0.05); border: 1px solid #00ffff; color: #00ffff; font-weight: 700; cursor: pointer;
+            transition: 0.2s; letter-spacing: 2px; font-size: 12px; font-family: "Rajdhani";
+            clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        }
+        button:hover { background: #00ffff; color: #000; box-shadow: 0 0 20px rgba(0,255,255,0.4); }
+        #sat-list { margin-top: 10px; max-height: 200px; overflow-y: auto; padding-right: 5px; }
+        .sat-item { 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px; margin-bottom: 4px; background: rgba(0,0,0,0.4); border: 1px solid #223;
+            font-size: 11px; cursor: pointer; transition: 0.2s;
+        }
+        .sat-item:hover { border-color: #00ffff; }
+        .sat-item.active { background: rgba(0,255,255,0.1); border-color: #00ffff; color: #fff; box-shadow: inset 3px 0 0 #00ffff; }
+        #watermark { position: absolute; bottom: 8px; right: 12px; text-align: right; color: rgba(255,255,255,0.15); font-size: 12px; font-family: "KaiTi", "楷体"; pointer-events: none; z-index: 100; }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #005577; }
+    </style>
+    
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+<div id="layout">
+    <div id="ctrl-box" class="panel">
+        <div class="scanline"></div>
+        <div class="panel-header" style="color:#ff5555">/// SYSTEM CONTROL</div>
+        <div style="padding:10px; flex:1; overflow-y:auto;">
+            <div class="ctrl-group">
+                <label>ORBIT RADIUS (Re)</label>
+                <input type="range" id="inp-r" min="5.5" max="15" step="0.1" value="10.0">
+                <div id="txt-r" class="val-disp">10.0</div>
+            </div>
+            <div class="ctrl-group">
+                <label>INCLINATION (Deg)</label>
+                <input type="range" id="inp-inc" min="0" max="90" step="1" value="55">
+                <div id="txt-inc" class="val-disp">55°</div>
+            </div>
+            <div class="ctrl-group">
+                <label>CONFIG</label>
+                <select id="inp-dir">
+                    <option value="1">PROGRADE [顺行]</option>
+                    <option value="-1">RETROGRADE [逆行]</option>
+                </select>
+                <div class="toggle-row">
+                    <span>SHOW ORBIT TRAILS</span>
+                    <input type="checkbox" id="inp-show-orbit" checked>
+                </div>
+                <div class="toggle-row">
+                    <span style="color:#eebb00">PROJECTION LINES (3D)</span>
+                    <input type="checkbox" id="inp-show-drop" checked>
+                </div>
+            </div>
+            <div class="ctrl-group" style="border:none">
+                <label>SIMULATED VELOCITY</label>
+                <div id="txt-v" style="font-size:20px; color:#00ff00; text-align:right; text-shadow:0 0 8px rgba(0,255,0,0.4); margin-top:5px;">3.07 km/s</div>
+                <button onclick="deploySat()">[+] DEPLOY SATELLITE</button>
+            </div>
+            <div style="border-top:1px solid #334; margin-top:10px; padding-top:10px;">
+                <label>ACTIVE UNITS (DEL to Remove)</label>
+                <div id="sat-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="lat-box" class="panel">
+        <div class="scanline"></div>
+        <div class="panel-header">LATITUDE SPECTRUM (Y-T)</div>
+        <canvas id="cvs-lat"></canvas>
+    </div>
+
+    <div id="earth-box" class="panel" ondblclick="toggleFullscreen()">
+        <div id="three-container" style="width:100%; height:100%;"></div>
+        <div style="position:absolute; top:5px; left:8px; font-size:10px; color:#eebb00; font-family:'Share Tech Mono'; pointer-events:none; z-index:10;">
+            :: REALTIME 3D VIEW ::
+        </div>
+        <div style="position:absolute; bottom:5px; right:8px; font-size:9px; color:rgba(255,255,255,0.3); pointer-events:none; z-index:10;">
+            [DBL-CLICK TO EXPAND]
+        </div>
+    </div>
+
+    <div id="map-box" class="panel">
+        <div class="scanline"></div>
+        <div class="panel-header">GLOBAL TRACKING (MERCATOR)</div>
+        <canvas id="cvs-map"></canvas>
+        <div id="watermark">南阳一中 张铭戈<br>公众号 戈悟志理 琢瑷成器</div>
+    </div>
+
+    <div id="lon-box" class="panel">
+        <div class="scanline"></div>
+        <div class="panel-header">LONGITUDE HISTORY (X-T)</div>
+        <canvas id="cvs-lon"></canvas>
+    </div>
+</div>
+  <script>
+    // --- 核心配置 ---
+    const CONF = { 
+        R_VISUAL: 5.5, 
+        T_EARTH: 24.0, 
+        TRAIL_MAX: 15000, 
+        TIME_SCALE_X: 15, 
+        TIME_SCALE_Y: 20 
+    };
+    const OMEGA_E = (2*Math.PI)/CONF.T_EARTH;
+    const NEON_PALETTE = ['#FF3333', '#33FF33', '#FFFF33', '#33FFFF', '#FF33FF', '#FFAA33', '#FFFFFF'];
+
+    let scene, camera, renderer, earthGroup, earthMesh, mapTex;
+    let sats = [], deletedSats = [], activeId = -1;
+    let showOrbits = true, showDropLines = true;
+    let clock = new THREE.Clock();
+    
+    // 关键修正：对齐纹理与几何体的相位
+    // Three.js 球体默认 UV 映射与 Math.atan2 的坐标系相差 90 度
+    const TEXTURE_PHASE_SHIFT = -Math.PI / 2; 
+
+    window.onload = () => {
+        mapTex = genMap();
+        init3D();
+        updateUI();
+        deploySat();
+        animate();
+        
+        ['inp-r','inp-inc','inp-dir'].forEach(id=>document.getElementById(id).addEventListener('input', updateUI));
+        document.getElementById('inp-show-orbit').addEventListener('change', (e) => {
+            showOrbits = e.target.checked;
+            sats.forEach(s => { if(s.orbitLine) s.orbitLine.visible = showOrbits; });
+        });
+        document.getElementById('inp-show-drop').addEventListener('change', (e) => {
+            showDropLines = e.target.checked;
+            sats.forEach(s => { if(s.dropLine) s.dropLine.visible = showDropLines; });
+        });
+
+        window.addEventListener('resize', onResize);
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Delete' || e.key === 'Backspace') deleteActiveSat();
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') undoDelete();
+        });
+    };
+
+    function deleteActiveSat() {
+        if (activeId === -1) return;
+        const idx = sats.findIndex(s => s.id === activeId);
+        if (idx > -1) {
+            const removed = sats.splice(idx, 1)[0];
+            removed.setVisibility(false);
+            deletedSats.push(removed);
+            activeId = sats.length > 0 ? sats[Math.max(0, idx - 1)].id : -1;
+            renderList();
+        }
+    }
+
+    function undoDelete() {
+        if (deletedSats.length > 0) {
+            const s = deletedSats.pop();
+            s.setVisibility(true);
+            sats.push(s);
+            activeId = s.id;
+            renderList();
+        }
+    }
+
+    function toggleFullscreen() {
+        const box = document.getElementById('earth-box');
+        box.classList.toggle('expanded');
+        setTimeout(onResize, 50); setTimeout(onResize, 450); 
+    }
+
+    function genMap() {
+        const c=document.createElement('canvas'); c.width=2048; c.height=1024;
+        const ctx=c.getContext('2d'); const w=c.width, h=c.height;
+        const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,'#050810'); g.addColorStop(1,'#000000');
+        ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+        
+        // 经纬网格
+        ctx.strokeStyle='rgba(0,255,255,0.08)'; ctx.lineWidth=1;
+        for(let i=1;i<12;i++){let x=i*w/12;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+        for(let i=1;i<6;i++){let y=i*h/6;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+        ctx.strokeStyle='#00aaaa'; ctx.lineWidth=2; ctx.beginPath();ctx.moveTo(0,h/2);ctx.lineTo(w,h/2);ctx.stroke();
+
+        const tx=(l)=>(l+180)/360*w; const ty=(l)=>(1-(l+90)/180)*h;
+        // 大陆块
+        ctx.fillStyle='rgba(0,255,255,0.02)'; ctx.strokeStyle='rgba(0,255,255,0.3)'; ctx.lineWidth=1.5;
+        const polys=[[[-170,70],[-100,60],[-60,10],[-75,-50],[-100,50]],[[-10,35],[50,30],[30,-30],[10,-30],[-15,10]],[[-10,40],[60,30],[100,10],[120,30],[180,70],[0,70]],[[115,-20],[150,-20],[150,-40],[115,-40]]];
+        polys.forEach(p=>{ctx.beginPath();p.forEach((pt,i)=>i==0?ctx.moveTo(tx(pt[0]),ty(pt[1])):ctx.lineTo(tx(pt[0]),ty(pt[1])));ctx.closePath();ctx.fill();ctx.stroke();});
+        // 中国轮廓示意
+        ctx.strokeStyle='#ffcc00'; ctx.lineWidth=2; ctx.fillStyle='rgba(255,200,0,0.1)';
+        const cn=[[75,40],[85,48],[130,50],[125,30],[115,22],[100,22],[85,28]];
+        ctx.beginPath(); cn.forEach((pt,i)=>i==0?ctx.moveTo(tx(pt[0]),ty(pt[1])):ctx.lineTo(tx(pt[0]),ty(pt[1])));
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        return c;
+    }
+
+    function init3D() {
+        const d = document.getElementById('three-container');
+        const w = d.clientWidth; const h = d.clientHeight;
+        scene = new THREE.Scene(); 
+        scene.fog = new THREE.FogExp2(0x000000, 0.03);
+        
+        camera = new THREE.PerspectiveCamera(30, w/h, 0.1, 1000);
+        camera.position.set(25, 12, 25);
+        
+        renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+        renderer.setSize(w, h);
+        d.appendChild(renderer.domElement);
+        
+        new THREE.OrbitControls(camera, renderer.domElement).enableDamping=true;
+        
+        scene.add(new THREE.AmbientLight(0x334455));
+        const l = new THREE.DirectionalLight(0xffffff, 1.5); l.position.set(10,5,10); scene.add(l);
+        const rim = new THREE.DirectionalLight(0x00aaff, 1.0); rim.position.set(-10,0,-5); scene.add(rim);
+        
+        earthGroup = new THREE.Group(); 
+        earthGroup.rotation.z = 23.44*Math.PI/180; 
+        scene.add(earthGroup);
+
+        const tex = new THREE.CanvasTexture(mapTex);
+        
+        // 关键修正：不对纹理做偏移，而是旋转几何体来对齐
+        // 这样数学计算和视觉就能完美统一
+        const mat = new THREE.MeshPhongMaterial({ map:tex, shininess: 20, emissive: 0x001122, emissiveIntensity: 0.4 });
+        earthMesh = new THREE.Mesh(new THREE.SphereGeometry(CONF.R_VISUAL, 64, 64), mat);
+        
+        // 修正相位：将几何体旋转 -90 度，使得 (x,0,0) 对应经度 0 (纹理中心)
+        earthMesh.geometry.rotateY(-Math.PI/2);
+        
+        earthGroup.add(earthMesh);
+
+        earthGroup.add(new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,-7,0), 14, 0x00ffff, 1, 0.6));
+    }
+
+    class Satellite {
+        constructor(id, r, inc, dir) {
+            this.id=id; this.r=r; this.inc=inc; this.dir=dir;
+            this.omega = (2*Math.PI * Math.sqrt(Math.pow(10,3)/Math.pow(r,3)))/24 * dir;
+            this.color = NEON_PALETTE[sats.length % NEON_PALETTE.length];
+            this.phase = Math.random() * Math.PI * 2; 
+            
+            // 2D 图表历史 (经纬度)
+            this.hist = [];
+            
+            // 3D 轨迹点 (Local Coordinates)
+            this.trackPoints = []; 
+
+            // 1. 轨道环
+            const curve = new THREE.EllipseCurve(0,0,r,r,0,2*Math.PI);
+            const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(128));
+            this.orbitLine = new THREE.Line(geo, new THREE.LineBasicMaterial({color:this.color, opacity:0.3, transparent:true}));
+            this.orbitLine.rotation.x = Math.PI/2 + THREE.Math.degToRad(inc);
+            this.orbitLine.visible = showOrbits;
+            earthGroup.add(this.orbitLine);
+
+            // 2. 卫星本体
+            this.mesh = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color:this.color}));
+            earthGroup.add(this.mesh);
+
+            // 3. 星下点光标 (跟随地球 - earthMesh)
+            this.surfaceMarker = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({color:this.color}));
+            earthMesh.add(this.surfaceMarker);
+
+            // 4. 垂直连线
+            const lineGeo = new THREE.BufferGeometry();
+            lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+            this.dropLine = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({color: this.color, opacity: 0.5, transparent: true}));
+            this.dropLine.visible = showDropLines;
+            scene.add(this.dropLine); 
+
+            // 5. 地表轨迹 (跟随地球 - earthMesh)
+            this.trackGeo = new THREE.BufferGeometry();
+            // 预分配大数组
+            this.trackPositions = new Float32Array(CONF.TRAIL_MAX * 3); 
+            this.trackGeo.setAttribute('position', new THREE.BufferAttribute(this.trackPositions, 3));
+            this.trackLine = new THREE.Line(this.trackGeo, new THREE.LineBasicMaterial({
+                color: this.color, 
+                transparent: true, 
+                opacity: 0.8 
+            }));
+            earthMesh.add(this.trackLine); 
+        }
+
+        setVisibility(val) {
+            this.mesh.visible = val;
+            this.orbitLine.visible = val && showOrbits;
+            this.dropLine.visible = val && showDropLines;
+            this.surfaceMarker.visible = val;
+            this.trackLine.visible = val;
+        }
+
+        update(dt, t) {
+            // A. 计算卫星在惯性空间的位置 (Inertial Frame)
+            const ang = this.omega * t * 2.0 + this.phase;
+            const ir = THREE.Math.degToRad(this.inc);
+            const vLocal = new THREE.Vector3(this.r*Math.cos(ang), this.r*Math.sin(ang), 0);
+            vLocal.applyAxisAngle(new THREE.Vector3(1,0,0), Math.PI/2 + ir);
+            this.mesh.position.copy(vLocal);
+
+            // B. 核心修正：直接利用坐标转换计算星下点
+            // 1. 获取卫星的世界坐标
+            const satWorldPos = new THREE.Vector3();
+            this.mesh.getWorldPosition(satWorldPos);
+            
+            // 2. 计算从地心出发指向卫星的射线方向，在地球表面的落点
+            // earthMesh.position 是 (0,0,0) (相对于 earthGroup)，我们直接用 worldToLocal
+            // 将卫星的世界坐标转为 earthMesh 的本地坐标
+            const satLocalToEarth = earthMesh.worldToLocal(satWorldPos.clone());
+            
+            // 3. 归一化并投影到地球半径 (R_VISUAL)
+            // 抬高 0.05 防止 Z-Fighting
+            const surfPosLocal = satLocalToEarth.normalize().multiplyScalar(CONF.R_VISUAL + 0.05);
+            
+            // 4. 设置光标位置 (Local Space) - 这保证了光标永远跟着地球转且垂直于卫星
+            this.surfaceMarker.position.copy(surfPosLocal);
+
+            // C. 3D 轨迹记录 (直接记录 Local 坐标)
+            // 不再使用 lat/lon 重建，消除所有数学误差
+            this.trackPoints.push(surfPosLocal.clone());
+            if(this.trackPoints.length > CONF.TRAIL_MAX) this.trackPoints.shift();
+            this.update3DTrack();
+
+            // D. DropLine 更新 (World Space)
+            const p1 = new THREE.Vector3(); this.mesh.getWorldPosition(p1);
+            const p2 = new THREE.Vector3(); this.surfaceMarker.getWorldPosition(p2);
+            const p = this.dropLine.geometry.attributes.position.array;
+            p[0]=p1.x; p[1]=p1.y; p[2]=p1.z;
+            p[3]=p2.x; p[4]=p2.y; p[5]=p2.z;
+            this.dropLine.geometry.attributes.position.needsUpdate = true;
+
+            // E. 计算 Lat/Lon 用于 2D 图表 (仅用于图表显示)
+            const lat = Math.asin(vLocal.y/this.r);
+            let lon = Math.atan2(vLocal.z, vLocal.x) - (OMEGA_E * t * 2.0);
+            lon=(lon%(2*Math.PI)); if(lon>Math.PI)lon-=2*Math.PI; if(lon<-Math.PI)lon+=2*Math.PI;
+            
+            // 降低 2D 图表采样率 (每3帧)
+            // 3D 轨迹则是每帧都采，保证平滑
+            if (renderer.info.render.frame % 3 === 0) {
+                this.hist.push({lat, lon, t}); 
+                if(this.hist.length > CONF.TRAIL_MAX/3) this.hist.shift(); // 长度适配采样率
+            }
+        }
+
+        update3DTrack() {
+            const len = this.trackPoints.length;
+            // 倒序填充顶点缓冲
+            for(let i=0; i<len; i++) {
+                const pt = this.trackPoints[i];
+                this.trackPositions[i*3] = pt.x;
+                this.trackPositions[i*3+1] = pt.y;
+                this.trackPositions[i*3+2] = pt.z;
+            }
+            this.trackGeo.setDrawRange(0, len);
+            this.trackGeo.attributes.position.needsUpdate = true;
+        }
+    }
+
+    // --- 绘图函数 ---
+    function drawCharts() {
+        const cM=document.getElementById('cvs-map'); resize(cM);
+        const ctxM=cM.getContext('2d');
+        ctxM.drawImage(mapTex, 0, 0, cM.width, cM.height);
+        drawGridText(ctxM, cM.width, cM.height);
+
+        const cL=document.getElementById('cvs-lat'); resize(cL);
+        const ctxL=cL.getContext('2d'); ctxL.clearRect(0,0,cL.width,cL.height);
+        drawGridLines(ctxL, 'lat');
+
+        const cLo=document.getElementById('cvs-lon'); resize(cLo);
+        const ctxLo=cLo.getContext('2d'); ctxLo.clearRect(0,0,cLo.width,cLo.height);
+        drawGridLines(ctxLo, 'lon');
+
+        sats.forEach(sat => {
+            drawTraj(ctxM, sat, 'map');
+            drawTraj(ctxL, sat, 'lat');
+            drawTraj(ctxLo, sat, 'lon');
+        });
+    }
+
+    function drawTraj(ctx, sat, mode) {
+        const pts=sat.hist; if(pts.length<2) return;
+        const w=ctx.canvas.width, h=ctx.canvas.height, now=clock.getElapsedTime();
+        
+        ctx.beginPath(); ctx.strokeStyle=sat.color; ctx.lineWidth=2;
+        ctx.shadowBlur = 6; ctx.shadowColor = sat.color; 
+        
+        let first=true;
+        for(let i=0; i<pts.length; i++) {
+            const p=pts[i]; let x,y;
+            // 标准 Plate Carrée 投影 (±90度)
+            if(mode==='map') { x=(p.lon+Math.PI)/(2*Math.PI)*w; y=(1-(p.lat+Math.PI/2)/Math.PI)*h; }
+            else if(mode==='lat') { x=w-(now-p.t)*CONF.TIME_SCALE_Y; y=(1-(p.lat+Math.PI/2)/Math.PI)*h; if(x<0) continue;} 
+            else { x=(p.lon+Math.PI)/(2*Math.PI)*w; y=(now-p.t)*CONF.TIME_SCALE_X; }
+
+            let jump=false;
+            if(!first && mode!=='lat') { if(Math.abs(p.lon-pts[i-1].lon)>4) jump=true; }
+            if(first||jump) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            first=false;
+        }
+        ctx.stroke(); ctx.shadowBlur=0;
+        
+        if(mode==='map') {
+            const l=pts[pts.length-1];
+            const lx=(l.lon+Math.PI)/(2*Math.PI)*w; const ly=(1-(l.lat+Math.PI/2)/Math.PI)*h;
+            ctx.fillStyle=sat.color; ctx.beginPath(); ctx.arc(lx,ly,4,0,6.28); ctx.fill();
+            if(sat.id===activeId) {
+                ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.setLineDash([2,4]);
+                ctx.beginPath(); ctx.moveTo(0,ly); ctx.lineTo(w,ly); ctx.stroke(); 
+                ctx.beginPath(); ctx.moveTo(lx,0); ctx.lineTo(lx,h); ctx.stroke(); ctx.setLineDash([]);
+            }
+        }
+    }
+
+    function drawGridText(ctx, w, h) {
+        ctx.fillStyle='rgba(0,255,255,0.4)'; ctx.font='9px "Share Tech Mono"';
+        for(let lo=-180; lo<=180; lo+=60) ctx.fillText(lo, (lo+180)/360*w+2, h-5);
+        for(let la=-60; la<=60; la+=30) ctx.fillText(la, 2, (1-(la+90)/180)*h-2);
+    }
+    
+    function drawGridLines(ctx, mode) {
+        const w=ctx.canvas.width, h=ctx.canvas.height;
+        ctx.strokeStyle='rgba(0,255,255,0.1)'; ctx.beginPath();
+        if(mode==='lat') {
+             for(let i=1;i<4;i++){let y=i*h/4; ctx.moveTo(0,y); ctx.lineTo(w,y);}
+             ctx.stroke(); ctx.strokeStyle='#00aaaa'; ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
+        } else {
+             for(let i=1;i<6;i++){let x=i*w/6; ctx.moveTo(x,0); ctx.lineTo(x,h);}
+             ctx.stroke();
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const t=clock.getElapsedTime(), dt=clock.getDelta();
+        
+        // 地球自转
+        if(earthMesh) earthMesh.rotation.y = OMEGA_E * t * 2.0;
+        
+        sats.forEach(s=>s.update(dt, t));
+        drawCharts();
+        renderer.render(scene, camera);
+    }
+    function updateUI() {
+        const r=parseFloat(document.getElementById('inp-r').value);
+        document.getElementById('txt-r').innerText = r.toFixed(1);
+        document.getElementById('txt-inc').innerText = document.getElementById('inp-inc').value + "°";
+        document.getElementById('txt-v').innerText = (Math.sqrt(10/r)*3.07).toFixed(2)+" km/s";
+    }
+    function deploySat() {
+        const r=parseFloat(document.getElementById('inp-r').value);
+        const inc=parseFloat(document.getElementById('inp-inc').value);
+        const dir=parseInt(document.getElementById('inp-dir').value);
+        const s = new Satellite(Date.now()+Math.random(), r, inc, dir);
+        sats.push(s); activeId=s.id; renderList();
+    }
+    function renderList() {
+        const d=document.getElementById('sat-list'); d.innerHTML="";
+        sats.forEach((s, idx)=>{
+            const el=document.createElement('div'); 
+            el.className=`sat-item ${s.id===activeId?'active':''}`;
+            el.innerHTML=`<span>UNIT ${idx+1}</span> <span style="color:${s.color}; font-size:10px;">Inc: ${s.inc}°</span>`;
+            el.onclick=()=>{activeId=s.id; renderList()}; d.appendChild(el);
+        });
+        d.scrollTop = d.scrollHeight;
+    }
+    function resize(c) { 
+        if(c.width!=c.clientWidth||c.height!=c.clientHeight){
+            c.width=c.clientWidth; c.height=c.clientHeight;
+        } 
+    }
+    function onResize() { 
+        const c=document.getElementById('three-container'); 
+        if(c && camera && renderer) {
+            camera.aspect=c.clientWidth/c.clientHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(c.clientWidth, c.clientHeight); 
+        }
+    }
+</script>      
+
+</body>
+</html>

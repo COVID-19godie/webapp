@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<!-- saved from url=(0059)file:///D:/documents/%E7%89%A9%E7%90%86/programs/index.html -->
+<html lang="zh-CN"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>带电粒子运动模拟 - 全屏场版</title>
+    <style>
+        :root {
+            --primary-color: #2196F3;
+            --accent-color: #FF9800;
+            --danger-color: #F44336;
+            --bg-color: #f5f5f5;
+            --panel-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --text-color: #333;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+        }
+
+        /* 侧边栏布局 */
+        #sidebar {
+            width: 380px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: #f9f9f9;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            color: #666;
+            transition: 0.3s;
+        }
+        .tab-btn.active {
+            background: #fff;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .scrollable-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        h3 { font-size: 14px; margin: 15px 0 8px 0; color: #555; font-weight: 700; border-left: 3px solid var(--primary-color); padding-left: 8px; }
+
+        .control-group {
+            background: #fff;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .input-row label { flex: 1; color: #555; }
+        .input-row input, .input-row select {
+            width: 120px;
+            padding: 4px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        input[type="number"] { font-family: 'Consolas', monospace; }
+
+        button {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #e0e0e0;
+            transition: background 0.2s;
+            font-weight: 500;
+        }
+        button:hover { background-color: #d0d0d0; }
+        button.primary { background-color: var(--primary-color); color: white; }
+        button.primary:hover { background-color: #1976D2; }
+        button.accent { background-color: var(--accent-color); color: white; }
+        button.accent:hover { background-color: #F57C00; }
+        button.danger { background-color: var(--danger-color); color: white; }
+        button.danger:hover { background-color: #D32F2F; }
+
+        .btn-row { display: flex; gap: 5px; }
+        .btn-row button { margin-top: 0; }
+
+        /* 场景参数面板样式 */
+        #scene-params-panel {
+            background-color: #E3F2FD;
+            border: 1px solid #BBDEFB;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none; 
+        }
+        #scene-params-panel h4 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            color: #1565C0;
+        }
+
+        /* 监控卡片样式 */
+        #monitor-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .monitor-card {
+            background: #263238;
+            color: #CFD8DC;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+            line-height: 1.4;
+            border-left: 4px solid #ccc;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .monitor-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            background: #37474F;
+        }
+        .monitor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 4px;
+            border-bottom: 1px solid #546E7A;
+            padding-bottom: 2px;
+        }
+        .monitor-data {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px 10px;
+        }
+        .val { color: #80CBC4; }
+
+        .mini-del-btn {
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            padding: 0;
+            margin: 0 0 0 10px;
+            background: #546E7A;
+            color: #fff;
+            border-radius: 50%;
+            font-size: 14px;
+            text-align: center;
+        }
+        .mini-del-btn:hover { background: var(--danger-color); }
+
+        #main-area {
+            flex: 1;
+            position: relative;
+            background-color: #fff;
+            cursor: crosshair;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #status-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.95);
+            border-top: 1px solid #ccc;
+            padding: 5px 15px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            pointer-events: auto;
+            z-index: 5;
+        }
+
+        #watermark {
+            position: absolute;
+            bottom: 40px;
+            right: 20px;
+            font-size: 24px;
+            font-family: "KaiTi", "楷体", serif;
+            color: rgba(0, 0, 0, 0.15);
+            pointer-events: none;
+            font-weight: bold;
+            z-index: 2;
+            user-select: none;
+        }
+
+        .dynamic-input-group { display: none; margin-top: 5px; border-top: 1px dashed #ddd; padding-top: 5px; }
+        .dynamic-input-group.active { display: block; }
+        
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f9f9f9;
+            padding: 6px 10px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            font-size: 12px;
+            border-left: 3px solid #ccc;
+        }
+        .delete-btn { width: auto; background: none; border: none; color: #999; font-size: 16px; margin: 0; padding: 0 5px; cursor: pointer;}
+        .delete-btn:hover { color: var(--danger-color); background: none; }
+
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="tabs">
+        <button class="tab-btn active" onclick="app.switchTab(&#39;controls&#39;)">控制 &amp; 场景</button>
+        <button class="tab-btn" onclick="app.switchTab(&#39;manage&#39;)">对象 &amp; 监控</button>
+    </div>
+
+    <!-- 标签页 1: 控制 -->
+    <div id="tab-controls" class="scrollable-content tab-content active">
+        
+        <div class="control-group">
+            <button id="btn-start" class="primary">开始 / 暂停 (Space)</button>
+            <div class="btn-row" style="margin-top: 5px;">
+                <button id="btn-reset">重置粒子 (R)</button>
+                <button id="btn-view-reset" style="background:#607D8B; color:white;">重置视野</button>
+            </div>
+            
+            <div class="input-row" style="margin-top:8px;">
+                <label>模拟速度:</label>
+                <input type="range" id="sim-speed" min="1" max="100" value="20">
+            </div>
+            
+            <div style="margin-top:8px; border-top:1px dashed #eee; padding-top:5px;">
+                <label title="每隔多少帧清除一次轨迹">轨迹清除周期:</label>
+                <input type="number" id="trail-interval" value="50000" step="500" min="50">
+            </div>
+        </div>
+        
+        <!-- 经典模型预设 -->
+        <h3>经典模型演示</h3>
+        <div class="control-group">
+            <div style="font-size:12px; color:#666; margin-bottom:5px;">选择一个场景，然后在下方微调参数：</div>
+            <button class="primary" onclick="app.setupSceneUI(&#39;velocity_selector&#39;)">速度选择器 (Velocity Selector)</button>
+            
+            <div class="btn-row" style="margin-top:5px;">
+                <button onclick="app.setupSceneUI(&#39;dynamic_rotation&#39;)">旋转圆 (Rotation)</button>
+                <button onclick="app.setupSceneUI(&#39;dynamic_translation&#39;)">平移圆 (Translation)</button>
+            </div>
+            <button onclick="app.setupSceneUI(&#39;dynamic_scaling&#39;)" style="margin-top:5px;">放缩圆 (Scaling)</button>
+
+            <!-- 动态生成的场景参数面板 -->
+            <div id="scene-params-panel">
+                <h4 id="scene-title">场景参数设置</h4>
+                <div id="scene-inputs"></div>
+                <button class="accent" onclick="app.reloadCurrentScene()">刷新场景 (应用参数)</button>
+            </div>
+        </div>
+
+        <h3>粒子发射器</h3>
+        <div class="control-group">
+            <div class="input-row">
+                <label>预设类型:</label>
+                <select id="particle-preset" onchange="app.handlePresetChange()">
+                    <option value="electron">电子 (Electron)</option>
+                    <option value="proton">质子 (Proton)</option>
+                    <option value="alpha">α粒子 (Alpha)</option>
+                    <option value="custom">自定义 (Custom)</option>
+                </select>
+            </div>
+
+            <!-- 自定义粒子属性 (默认隐藏) -->
+            <div id="custom-particle-props" class="dynamic-input-group">
+                <div class="input-row">
+                    <label>电荷量 q (C):</label>
+                    <input type="number" id="custom-q" value="1.6e-19" step="1e-20">
+                </div>
+                <div class="input-row">
+                    <label>质量 m (kg):</label>
+                    <input type="number" id="custom-m" value="1.67e-27" step="1e-28">
+                </div>
+            </div>
+
+            <div class="input-row">
+                <label>初速度 v0 (m/s):</label>
+                <input type="number" id="p-velocity" value="2000000">
+            </div>
+            <div class="input-row">
+                <label>发射角度 (°):</label>
+                <input type="number" id="p-angle" value="0">
+            </div>
+            
+            <div style="margin: 8px 0; border-top: 1px dashed #eee; padding-top: 5px;">
+                <div class="input-row">
+                    <label>位置输入方式:</label>
+                    <select id="p-pos-mode" onchange="app.toggleParticleInputMode()">
+                        <option value="cartesian">直角坐标 (x, y)</option>
+                        <option value="polar">极坐标 (r, θ)</option>
+                    </select>
+                </div>
+
+                <div id="p-input-cartesian" style="display: block;">
+                    <div class="input-row">
+                        <label>位置 X (m):</label>
+                        <input type="number" id="p-x" value="-0.1" step="0.01">
+                    </div>
+                    <div class="input-row">
+                        <label>位置 Y (m):</label>
+                        <input type="number" id="p-y" value="0.05" step="0.01">
+                    </div>
+                </div>
+
+                <div id="p-input-polar" style="display:none;">
+                    <div class="input-row">
+                        <label>半径 r (m):</label>
+                        <input type="number" id="p-r" value="0.1" step="0.01">
+                    </div>
+                    <div class="input-row">
+                        <label>角度 θ (°):</label>
+                        <input type="number" id="p-theta" value="150">
+                    </div>
+                </div>
+            </div>
+
+            <button id="btn-add-particle" class="accent">发射粒子</button>
+        </div>
+
+        <h3>电磁场设置</h3>
+        <div class="control-group">
+            <div class="input-row">
+                <label>场类型:</label>
+                <select id="field-type" onchange="app.toggleFieldInputs()">
+                    <option value="magnetic">磁场 (B)</option>
+                    <option value="electric">电场 (E)</option>
+                </select>
+            </div>
+            
+            <div id="magnetic-inputs" style="display: block;">
+                <div class="input-row">
+                    <label>磁感应强度 B (T):</label>
+                    <input type="number" id="field-b" value="0.005" step="0.001">
+                </div>
+                <div class="input-row">
+                    <label>方向:</label>
+                    <select id="field-b-dir">
+                        <option value="in">垂直向里 (×)</option>
+                        <option value="out">垂直向外 (•)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="electric-inputs" style="display:none;">
+                <div class="input-row">
+                    <label>电场 Ex (V/m):</label>
+                    <input type="number" id="field-ex" value="0">
+                </div>
+                <div class="input-row">
+                    <label>电场 Ey (V/m):</label>
+                    <input type="number" id="field-ey" value="5000">
+                </div>
+            </div>
+
+            <div class="input-row">
+                <label>区域形状:</label>
+                <select id="region-shape" onchange="app.toggleShapeInputs()">
+                    <option value="rect">矩形 (Rect)</option>
+                    <option value="circle">圆形 (Circle)</option>
+                    <option value="uniform">全屏 (Uniform)</option>
+                </select>
+            </div>
+
+            <div id="shape-rect" class="dynamic-input-group active">
+                <div class="input-row"><label>中心 X:</label><input type="number" id="rect-x" value="0"></div>
+                <div class="input-row"><label>中心 Y:</label><input type="number" id="rect-y" value="0"></div>
+                <div class="input-row"><label>宽度 W:</label><input type="number" id="rect-w" value="0.1"></div>
+                <div class="input-row"><label>高度 H:</label><input type="number" id="rect-h" value="0.1"></div>
+                <div class="input-row"><label>旋转角度 (°):</label><input type="number" id="rect-angle" value="0"></div>
+            </div>
+
+            <div id="shape-circle" class="dynamic-input-group">
+                <div class="input-row"><label>圆心 X:</label><input type="number" id="circ-x" value="0"></div>
+                <div class="input-row"><label>圆心 Y:</label><input type="number" id="circ-y" value="0"></div>
+                <div class="input-row"><label>半径 R:</label><input type="number" id="circ-r" value="0.05"></div>
+            </div>
+
+            <button id="btn-add-field" style="margin-top:10px;">添加场区域</button>
+        </div>
+    </div>
+
+    <!-- 标签页 2: 管理与监控 -->
+    <div id="tab-manage" class="scrollable-content tab-content">
+        <h3>实时数据监控</h3>
+        <div style="font-size:11px; color:#666; margin-bottom:5px;">(点击卡片高亮显示，点击×删除)</div>
+        <div id="monitor-container">
+            <div style="color:#999; font-size:12px; padding:10px;">暂无活跃粒子</div>
+        </div>
+
+        <div style="margin: 20px 0 10px 0; border-top:1px solid #eee; padding-top:10px;">
+            <button class="danger" onclick="app.clearAll()">清空所有对象</button>
+        </div>
+
+        <h3>已添加的场 (Fields)</h3>
+        <div id="field-list-container">
+            <div style="color:#999; font-size:12px; padding:10px;">无场区域</div>
+        </div>
+
+        <h3>已存在的粒子 (Particles)</h3>
+        <div id="particle-list-container">
+            <div style="color:#999; font-size:12px; padding:10px;">无粒子</div>
+        </div>
+    </div>
+</div>
+
+<div id="main-area">
+    <canvas id="sim-canvas" width="904" height="695"></canvas>
+    <div id="watermark">南阳一中 张铭戈   公众号：戈悟志理琢瑷成器</div>
+    
+    <div id="status-bar">
+        <div class="status-left">
+            <span id="status-state">状态: 停止</span>
+            <span id="status-mouse" style="margin-left:20px; min-width: 150px;">鼠标: (x=-0.017, y=0.022)</span>
+        </div>
+        <div class="status-right">
+            <select id="view-coord-mode" onchange="app.changeViewMode(this.value)" style="border:none; background:transparent; font-size:11px; cursor:pointer;">
+                <option value="cartesian">直角坐标 (Grid)</option>
+                <option value="polar">极坐标 (Polar)</option>
+            </select>
+            <span id="status-scale" style="margin-left:10px;">比例: 1px = 1mm</span>
+        </div>
+    </div>
+</div>
+
+<script>
+const CONSTANTS = {
+    e: 1.60217662e-19,
+    me: 9.10938356e-31,
+    mp: 1.6726219e-27,
+    ma: 6.64465723e-27
+};
+
+const PRESETS = {
+    electron: { q: -CONSTANTS.e, m: CONSTANTS.me, radius: 3, label: 'e⁻' },
+    proton:   { q: CONSTANTS.e, m: CONSTANTS.mp, radius: 4, label: 'p⁺' },
+    alpha:    { q: 2*CONSTANTS.e, m: CONSTANTS.ma, radius: 5, label: 'α²⁺' },
+    custom:   { q: 1e-19, m: 1e-27, radius: 4, label: 'Custom' }
+};
+
+class Utils {
+    static getRandomColor() {
+        const h = Math.floor(Math.random() * 360);
+        return `hsl(${h}, 90%, 60%)`;
+    }
+
+    static rotatePoint(x, y, cx, cy, angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const dx = x - cx;
+        const dy = y - cy;
+        return {
+            x: cx + (dx * cos - dy * sin),
+            y: cy + (dx * sin + dy * cos)
+        };
+    }
+    
+    static formatNumber(num) {
+        if (Math.abs(num) < 1e-10) return "0";
+        if (Math.abs(num) < 0.01 || Math.abs(num) >= 1000) return num.toExponential(1);
+        return parseFloat(num.toPrecision(3)).toString();
+    }
+}
+
+class Region {
+    constructor(id, type, shape) {
+        this.id = id;
+        this.type = type; 
+        this.shape = shape; 
+    }
+    contains(px, py) { return false; }
+}
+
+class RectRegion extends Region {
+    constructor(id, type, x, y, w, h, angle) {
+        super(id, type, 'rect');
+        this.cx = x; this.cy = y; this.w = w; this.h = h; this.angle = angle;
+    }
+    contains(px, py) {
+        const p = Utils.rotatePoint(px, py, this.cx, this.cy, -this.angle);
+        return p.x >= this.cx - this.w/2 && p.x <= this.cx + this.w/2 &&
+               p.y >= this.cy - this.h/2 && p.y <= this.cy + this.h/2;
+    }
+}
+
+class CircleRegion extends Region {
+    constructor(id, type, x, y, r) {
+        super(id, type, 'circle');
+        this.cx = x; this.cy = y; this.r = r;
+    }
+    contains(px, py) {
+        return (px - this.cx)**2 + (py - this.cy)**2 <= this.r**2;
+    }
+}
+
+class UniformRegion extends Region {
+    constructor(id, type) { super(id, type, 'uniform'); }
+    contains(px, py) { return true; }
+}
+
+class Particle {
+    constructor(id, x, y, vx, vy, config, color) {
+        this.id = id;
+        this.pos = { x: x, y: y };
+        this.vel = { x: vx, y: vy };
+        this.q = config.q;
+        this.m = config.m;
+        this.radius = config.radius;
+        this.label = config.label;
+        this.color = color;
+        this.trail = [];
+        this.active = true;
+    }
+
+    updateTrail() {
+        if (this.trail.length === 0) {
+            this.trail.push({x: this.pos.x, y: this.pos.y});
+            return;
+        }
+        const last = this.trail[this.trail.length-1];
+        const distSq = (this.pos.x - last.x)**2 + (this.pos.y - last.y)**2;
+        if (distSq > 1e-7) { 
+            this.trail.push({x: this.pos.x, y: this.pos.y});
+            if (this.trail.length > 20000) this.trail.shift();
+        }
+    }
+}
+
+class PhysicsEngine {
+    constructor() {
+        this.particles = [];
+        this.regions = [];
+        this.dt = 2e-12; 
+        this.stepsPerFrame = 500; 
+        this.nextId = 1;
+    }
+
+    addParticle(p) { this.particles.push(p); }
+    addRegion(r) { this.regions.push(r); }
+    removeParticle(id) { this.particles = this.particles.filter(p => p.id !== id); }
+    removeRegion(id) { this.regions = this.regions.filter(r => r.id !== id); }
+
+    calculateFields(x, y) {
+        let Bz = 0, Ex = 0, Ey = 0;
+        for (let r of this.regions) {
+            if (r.contains(x, y)) {
+                if (r.type === 'magnetic') Bz += r.Bz;
+                else if (r.type === 'electric') { Ex += r.Ex; Ey += r.Ey; }
+            }
+        }
+        return { Bz, Ex, Ey };
+    }
+
+    acceleration(x, y, vx, vy, q, m) {
+        const { Bz, Ex, Ey } = this.calculateFields(x, y);
+        return {
+            ax: (q / m) * (Ex + vy * Bz),
+            ay: (q / m) * (Ey - vx * Bz),
+            fields: { Bz, Ex, Ey }
+        };
+    }
+
+    step() {
+        const dt = this.dt;
+        for (let p of this.particles) {
+            if (!p.active) continue;
+
+            const {x, y} = p.pos;
+            const {x: vx, y: vy} = p.vel;
+
+            let a1 = this.acceleration(x, y, vx, vy, p.q, p.m);
+            let k1_vx = a1.ax * dt, k1_vy = a1.ay * dt;
+            let k1_rx = vx * dt, k1_ry = vy * dt;
+
+            let a2 = this.acceleration(x + k1_rx/2, y + k1_ry/2, vx + k1_vx/2, vy + k1_vy/2, p.q, p.m);
+            let k2_vx = a2.ax * dt, k2_vy = a2.ay * dt;
+            let k2_rx = (vx + k1_vx/2) * dt, k2_ry = (vy + k1_vy/2) * dt;
+
+            let a3 = this.acceleration(x + k2_rx/2, y + k2_ry/2, vx + k2_vx/2, vy + k2_vy/2, p.q, p.m);
+            let k3_vx = a3.ax * dt, k3_vy = a3.ay * dt;
+            let k3_rx = (vx + k2_vx/2) * dt, k3_ry = (vy + k2_vy/2) * dt;
+
+            let a4 = this.acceleration(x + k3_rx, y + k3_ry, vx + k3_vx, vy + k3_vy, p.q, p.m);
+            let k4_vx = a4.ax * dt, k4_vy = a4.ay * dt;
+            let k4_rx = (vx + k3_vx) * dt, k4_ry = (vy + k3_vy) * dt;
+
+            p.pos.x += (k1_rx + 2*k2_rx + 2*k3_rx + k4_rx) / 6;
+            p.pos.y += (k1_ry + 2*k2_ry + 2*k3_ry + k4_ry) / 6;
+            p.vel.x += (k1_vx + 2*k2_vx + 2*k3_vx + k4_vx) / 6;
+            p.vel.y += (k1_vy + 2*k2_vy + 2*k3_vy + k4_vy) / 6;
+
+            p.updateTrail();
+        }
+    }
+}
+
+class SimulationApp {
+    constructor() {
+        this.canvas = document.getElementById('sim-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.physics = new PhysicsEngine();
+        
+        this.scale = 2000; 
+        this.offsetX = this.canvas.width / 2;
+        this.offsetY = this.canvas.height / 2;
+        this.isRunning = false;
+        this.viewMode = 'cartesian';
+        
+        this.frameCount = 0;
+        this.trailClearInterval = 50000; 
+
+        // 场景状态
+        this.currentSceneType = null;
+        this.highlightedParticleId = null;
+
+        this.isDragging = false;
+        this.lastMouse = {x:0, y:0};
+
+        this.initDOM();
+        this.resize();
+        this.animate();
+
+        window.addEventListener('resize', () => this.resize());
+        this.canvas.addEventListener('mousedown', e => this.onMouseDown(e));
+        this.canvas.addEventListener('mousemove', e => this.onMouseMove(e));
+        window.addEventListener('mouseup', () => this.isDragging = false);
+        this.canvas.addEventListener('wheel', e => this.onWheel(e), {passive: false});
+        
+        window.addEventListener('keydown', e => {
+            if(e.code === 'Space') this.toggleSim();
+            if(e.code === 'KeyR') this.resetParticles();
+        });
+    }
+
+    initDOM() {
+        document.getElementById('btn-start').onclick = () => this.toggleSim();
+        document.getElementById('btn-reset').onclick = () => this.resetParticles();
+        document.getElementById('btn-view-reset').onclick = () => this.resetView(); 
+        
+        document.getElementById('btn-add-particle').onclick = () => this.addParticle();
+        document.getElementById('btn-add-field').onclick = () => this.addField();
+        
+        document.getElementById('sim-speed').oninput = (e) => {
+            const baseSteps = 100;
+            this.physics.stepsPerFrame = baseSteps + parseInt(e.target.value) * 15;
+        };
+        
+        document.getElementById('trail-interval').onchange = (e) => {
+            this.trailClearInterval = parseInt(e.target.value);
+        };
+
+        this.toggleFieldInputs();
+        this.toggleShapeInputs();
+        this.toggleParticleInputMode();
+        this.handlePresetChange();
+    }
+
+    switchTab(tabName) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        if(tabName === 'controls') {
+            document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+            document.getElementById('tab-controls').classList.add('active');
+        } else {
+            document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+            document.getElementById('tab-manage').classList.add('active');
+            this.renderLists();
+        }
+    }
+
+    // ====== 场景系统：UI生成与加载 ======
+
+    setupSceneUI(type) {
+        const panel = document.getElementById('scene-params-panel');
+        const container = document.getElementById('scene-inputs');
+        const title = document.getElementById('scene-title');
+        
+        panel.style.display = 'block';
+        container.innerHTML = ''; 
+        this.currentSceneType = type;
+
+        let inputsHTML = '';
+
+        if (type === 'velocity_selector') {
+            title.innerText = "速度选择器参数";
+            inputsHTML += this.createInput('sc-x', '起始中心 X (m)', -0.2, 0.01);
+            inputsHTML += this.createInput('sc-y', '起始中心 Y (m)', 0, 0.01);
+            
+            inputsHTML += this.createInput('sc-v', '目标速度 (m/s)', 200000);
+            inputsHTML += this.createInput('sc-b', '磁场 B (T)', 0.05, 0.001);
+        } 
+        else {
+            if (type === 'dynamic_rotation') title.innerText = "旋转圆参数 (全屏场)";
+            else if (type === 'dynamic_translation') title.innerText = "平移圆参数 (全屏场)";
+            else if (type === 'dynamic_scaling') title.innerText = "放缩圆参数 (全屏场)";
+
+            // 粒子源位置
+            inputsHTML += this.createInput('sc-x', '粒子源位置 X (m)', -0.1, 0.01);
+            inputsHTML += this.createInput('sc-y', '粒子源位置 Y (m)', 0, 0.01);
+
+            inputsHTML += this.createInput('sc-v', '基准速度 (m/s)', 100000);
+            inputsHTML += this.createInput('sc-b', '磁场 B (T)', 0.02, 0.001);
+            
+            if (type === 'dynamic_rotation') inputsHTML += this.createInput('sc-step', '角度间隔 (°)', 15);
+            else if (type === 'dynamic_translation') inputsHTML += this.createInput('sc-step', '间距间隔 (m)', 0.04, 0.01);
+            else if (type === 'dynamic_scaling') inputsHTML += this.createInput('sc-step', '速度倍率增量', 0.2, 0.1);
+        }
+
+        container.innerHTML = inputsHTML;
+        this.reloadCurrentScene();
+    }
+
+    createInput(id, label, val, step=null) {
+        return `
+        <div class="input-row">
+            <label>${label}:</label>
+            <input type="number" id="${id}" value="${val}" ${step ? `step="${step}"` : ''}>
+        </div>`;
+    }
+
+    reloadCurrentScene() {
+        if (!this.currentSceneType) return;
+        
+        this.clearAll();
+        this.isRunning = false;
+        document.getElementById('status-state').innerText = "状态: 停止";
+        
+        const getVal = (id) => parseFloat(document.getElementById(id).value);
+        
+        const type = this.currentSceneType;
+        const proton = PRESETS.proton;
+        const rectW_Selector = 0.4, rectH_Selector = 0.2;
+        const colors = ['#FF5252', '#FFEB3B', '#448AFF', '#69F0AE', '#E040FB'];
+        
+        const startX = getVal('sc-x');
+        const startY = getVal('sc-y');
+
+        if (type === 'velocity_selector') {
+            const v = getVal('sc-v');
+            const B = getVal('sc-b');
+            const E = v * B; 
+
+            const centerX = startX + rectW_Selector / 2;
+            const centerY = 0;
+
+            const magRegion = new RectRegion(this.physics.nextId++, 'magnetic', centerX, centerY, rectW_Selector, rectH_Selector, 0);
+            magRegion.Bz = -B; 
+            this.physics.addRegion(magRegion);
+
+            const elecRegion = new RectRegion(this.physics.nextId++, 'electric', centerX, centerY, rectW_Selector, rectH_Selector, 0);
+            elecRegion.Ex = 0;
+            elecRegion.Ey = -E; 
+            this.physics.addRegion(elecRegion);
+
+            const p = new Particle(this.physics.nextId++, startX, startY, v, 0, proton, '#FF9800');
+            p.label = "v=E/B";
+            this.physics.addParticle(p);
+
+            const pFast = new Particle(this.physics.nextId++, startX, startY + 0.02, v*1.5, 0, proton, '#9E9E9E');
+            pFast.label = "v_high";
+            this.physics.addParticle(pFast);
+
+             const pSlow = new Particle(this.physics.nextId++, startX, startY - 0.02, v*0.7, 0, proton, '#607D8B');
+            pSlow.label = "v_low";
+            this.physics.addParticle(pSlow);
+        }
+        else {
+            const vBase = getVal('sc-v');
+            const B = getVal('sc-b');
+            const step = getVal('sc-step');
+            
+            // 使用全屏场
+            const fieldR = new UniformRegion(this.physics.nextId++, 'magnetic');
+            fieldR.Bz = -B; 
+            this.physics.addRegion(fieldR);
+
+            if (type === 'dynamic_rotation') {
+                const angles = [-2*step, -step, 0, step, 2*step];
+                angles.forEach((ang, i) => {
+                    const rad = ang * Math.PI / 180;
+                    const vx = vBase * Math.cos(rad);
+                    const vy = vBase * Math.sin(rad);
+                    const p = new Particle(this.physics.nextId++, startX, startY, vx, vy, proton, colors[i%5]);
+                    p.label = `${ang}°`;
+                    this.physics.addParticle(p);
+                });
+            }
+            else if (type === 'dynamic_translation') {
+                const ys = [2*step, step, 0, -step, -2*step];
+                ys.forEach((yOffset, i) => {
+                    const p = new Particle(this.physics.nextId++, startX, startY + yOffset, vBase, 0, proton, colors[i%5]);
+                    p.label = `y${yOffset > 0 ? '+' : ''}${yOffset}`;
+                    this.physics.addParticle(p);
+                });
+            }
+            else if (type === 'dynamic_scaling') {
+                const factors = [1 - 2*step, 1 - step, 1, 1 + step, 1 + 2*step];
+                factors.forEach((f, i) => {
+                    if(f <= 0) return;
+                    const v = vBase * f;
+                    const p = new Particle(this.physics.nextId++, startX, startY, v, 0, proton, colors[i%5]);
+                    p.label = `v×${f.toFixed(1)}`;
+                    this.physics.addParticle(p);
+                });
+            }
+        }
+
+        this.renderLists();
+        this.scale = 1500;
+        this.draw();
+    }
+
+    // ====== 视图与其他功能 ======
+
+    changeViewMode(mode) {
+        this.viewMode = mode;
+        this.draw();
+    }
+
+    toggleParticleInputMode() {
+        const mode = document.getElementById('p-pos-mode').value;
+        document.getElementById('p-input-cartesian').style.display = mode === 'cartesian' ? 'block' : 'none';
+        document.getElementById('p-input-polar').style.display = mode === 'polar' ? 'block' : 'none';
+    }
+
+    toggleFieldInputs() {
+        const isMag = document.getElementById('field-type').value === 'magnetic';
+        document.getElementById('magnetic-inputs').style.display = isMag ? 'block' : 'none';
+        document.getElementById('electric-inputs').style.display = isMag ? 'none' : 'block';
+    }
+
+    toggleShapeInputs() {
+        const shape = document.getElementById('region-shape').value;
+        document.querySelectorAll('.dynamic-input-group').forEach(el => el.classList.remove('active'));
+        this.handlePresetChange();
+        
+        if (shape !== 'uniform') {
+            document.getElementById(`shape-${shape}`).classList.add('active');
+        }
+    }
+
+    resize() {
+        this.canvas.width = document.getElementById('main-area').clientWidth;
+        this.canvas.height = document.getElementById('main-area').clientHeight;
+        if (!this.offsetX) this.resetView(); 
+    }
+
+    resetView() {
+        this.scale = 2000;
+        this.offsetX = this.canvas.width / 2;
+        this.offsetY = this.canvas.height / 2;
+        this.draw();
+    }
+
+    w2s(wx, wy) {
+        return { x: wx * this.scale + this.offsetX, y: this.offsetY - wy * this.scale };
+    }
+    s2w(sx, sy) {
+        return { x: (sx - this.offsetX) / this.scale, y: (this.offsetY - sy) / this.scale };
+    }
+
+    toggleSim() {
+        this.isRunning = !this.isRunning;
+        document.getElementById('status-state').innerText = this.isRunning ? "状态: 运行中" : "状态: 停止";
+    }
+
+    resetParticles() {
+        this.physics.particles = [];
+        this.highlightedParticleId = null;
+        this.frameCount = 0;
+        this.renderLists();
+        this.updateMonitor();
+    }
+
+    clearAll() {
+        this.physics.particles = [];
+        this.physics.regions = [];
+        this.highlightedParticleId = null;
+        this.frameCount = 0;
+        this.renderLists();
+        this.updateMonitor();
+    }
+
+    handlePresetChange() {
+        const name = document.getElementById('particle-preset').value;
+        
+        const customProps = document.getElementById('custom-particle-props');
+        if (name === 'custom') {
+            customProps.classList.add('active');
+        } else {
+            customProps.classList.remove('active');
+        }
+
+        this.loadPreset(name);
+    }
+
+    loadPreset(name) {
+        if (name === 'custom') return;
+        let v0 = 2e6;
+        if (name === 'proton') v0 = 5e4;
+        if (name === 'alpha') v0 = 3e4;
+        document.getElementById('p-velocity').value = v0;
+    }
+
+    addParticle() {
+        const type = document.getElementById('particle-preset').value;
+        let config = PRESETS[type];
+        
+        if (type === 'custom') {
+             const qVal = parseFloat(document.getElementById('custom-q').value);
+             const mVal = parseFloat(document.getElementById('custom-m').value);
+             config = {
+                 q: qVal,
+                 m: mVal,
+                 radius: 4,
+                 label: 'Custom'
+             };
+        }
+        
+        const v0 = parseFloat(document.getElementById('p-velocity').value);
+        const angleV = parseFloat(document.getElementById('p-angle').value) * Math.PI / 180;
+        
+        let x, y;
+        const inputMode = document.getElementById('p-pos-mode').value;
+        
+        if (inputMode === 'cartesian') {
+            x = parseFloat(document.getElementById('p-x').value);
+            y = parseFloat(document.getElementById('p-y').value);
+        } else {
+            const r = parseFloat(document.getElementById('p-r').value);
+            const theta = parseFloat(document.getElementById('p-theta').value) * Math.PI / 180;
+            x = r * Math.cos(theta);
+            y = r * Math.sin(theta);
+        }
+
+        const vx = v0 * Math.cos(angleV);
+        const vy = v0 * Math.sin(angleV);
+
+        let color = '#2196F3';
+        if (type === 'proton') color = '#FF9800';
+        else if (type === 'alpha') color = '#4CAF50';
+        else if (type === 'custom') color = Utils.getRandomColor();
+
+        const p = new Particle(this.physics.nextId++, x, y, vx, vy, config, color);
+        this.physics.addParticle(p);
+        this.renderLists();
+        this.updateMonitor();
+
+        this.isRunning = false;
+        document.getElementById('status-state').innerText = "状态: 停止";
+        this.draw(); 
+    }
+
+    addField() {
+        const type = document.getElementById('field-type').value;
+        const shape = document.getElementById('region-shape').value;
+        
+        let props = {};
+        if (type === 'magnetic') {
+            props.Bz = parseFloat(document.getElementById('field-b').value);
+            if (document.getElementById('field-b-dir').value === 'in') props.Bz *= -1;
+        } else {
+            props.Ex = parseFloat(document.getElementById('field-ex').value);
+            props.Ey = parseFloat(document.getElementById('field-ey').value);
+        }
+
+        let region;
+        const id = this.physics.nextId++;
+
+        if (shape === 'uniform') {
+            region = new UniformRegion(id, type);
+        } else if (shape === 'rect') {
+            const cx = parseFloat(document.getElementById('rect-x').value);
+            const cy = parseFloat(document.getElementById('rect-y').value);
+            const w = parseFloat(document.getElementById('rect-w').value);
+            const h = parseFloat(document.getElementById('rect-h').value);
+            const angle = parseFloat(document.getElementById('rect-angle').value) * Math.PI / 180;
+            region = new RectRegion(id, type, cx, cy, w, h, angle);
+        } else if (shape === 'circle') {
+            const cx = parseFloat(document.getElementById('circ-x').value);
+            const cy = parseFloat(document.getElementById('circ-y').value);
+            const r = parseFloat(document.getElementById('circ-r').value);
+            region = new CircleRegion(id, type, cx, cy, r);
+        }
+
+        if (region) {
+            Object.assign(region, props);
+            this.physics.addRegion(region);
+            this.renderLists();
+        }
+
+        this.isRunning = false;
+        document.getElementById('status-state').innerText = "状态: 停止";
+        this.draw(); 
+    }
+
+    renderLists() {
+        const fList = document.getElementById('field-list-container');
+        const pList = document.getElementById('particle-list-container');
+        
+        if (this.physics.regions.length === 0) fList.innerHTML = '<div style="color:#999;font-size:12px;padding:10px;">无场区域</div>';
+        else {
+            fList.innerHTML = this.physics.regions.map(r => {
+                let info = "";
+                if (r.type === 'magnetic') info = `B=${r.Bz}T`;
+                else info = `E=(${r.Ex},${r.Ey})`;
+                let shapeName = { rect:'矩形', circle:'圆形', uniform:'全空间' }[r.shape];
+                return `
+                <div id="list-item-region-${r.id}" class="list-item field-item">
+                    <span>${shapeName} [${info}]</span>
+                    <button class="delete-btn" onclick="app.deleteRegion(${r.id})">×</button>
+                </div>`;
+            }).join('');
+        }
+
+        if (this.physics.particles.length === 0) pList.innerHTML = '<div style="color:#999;font-size:12px;padding:10px;">无粒子</div>';
+        else {
+            pList.innerHTML = this.physics.particles.map(p => `
+                <div id="list-item-particle-${p.id}" class="list-item particle-item" style="border-left-color:${p.color}">
+                    <span>${p.label}</span>
+                    <button class="delete-btn" onclick="app.deleteParticle(${p.id})">×</button>
+                </div>
+            `).join('');
+        }
+    }
+
+    deleteParticle(id) {
+        this.physics.removeParticle(id);
+        if (this.highlightedParticleId === id) this.highlightedParticleId = null;
+        this.renderLists();
+        this.updateMonitor();
+    }
+    deleteRegion(id) {
+        this.physics.removeRegion(id);
+        this.renderLists();
+    }
+    
+    highlightParticle(id) {
+        this.highlightedParticleId = id;
+        this.draw();
+        setTimeout(() => {
+             this.highlightedParticleId = null; 
+             this.draw();
+        }, 800);
+    }
+
+    updateMonitor() {
+        const container = document.getElementById('monitor-container');
+        
+        if (this.physics.particles.length === 0) {
+            if (container.innerHTML.indexOf("暂无活跃粒子") === -1) {
+                container.innerHTML = '<div style="color:#999; font-size:12px; padding:10px;">暂无活跃粒子</div>';
+            }
+            return;
+        }
+
+        let html = '';
+        
+        this.physics.particles.forEach(p => {
+            const res = this.physics.acceleration(p.pos.x, p.pos.y, p.vel.x, p.vel.y, p.q, p.m);
+            const v = Math.hypot(p.vel.x, p.vel.y);
+            
+            html += `
+            <div class="monitor-card" style="border-left-color: ${p.color}" onclick="app.highlightParticle(${p.id})">
+                <div class="monitor-header">
+                    <span>${p.label} <span style="font-weight:normal; font-size:10px; opacity:0.7">ID:${p.id}</span></span>
+                    <button class="mini-del-btn" onclick="event.stopPropagation(); app.deleteParticle(${p.id})">×</button>
+                </div>
+                <div class="monitor-data">
+                    <span>x: <span class="val">${p.pos.x.toExponential(2)}</span></span>
+                    <span>vx: <span class="val">${p.vel.x.toExponential(2)}</span></span>
+                    <span>y: <span class="val">${p.pos.y.toExponential(2)}</span></span>
+                    <span>vy: <span class="val">${p.vel.y.toExponential(2)}</span></span>
+                    <span>v: <span class="val">${v.toExponential(2)}</span></span>
+                    <span>B: <span class="val">${res.fields.Bz.toFixed(3)}</span></span>
+                </div>
+            </div>`;
+        });
+        
+        if (container.childElementCount !== this.physics.particles.length || this.frameCount % 20 === 0) {
+             container.innerHTML = html;
+        } else {
+            container.innerHTML = html;
+        }
+    }
+
+    animate() {
+        if (this.isRunning) {
+            for(let i=0; i<this.physics.stepsPerFrame; i++) {
+                this.physics.step();
+            }
+            if (this.frameCount % 5 === 0) {
+                this.updateMonitor();
+            }
+            this.frameCount++;
+            if (this.frameCount >= this.trailClearInterval) {
+                this.frameCount = 0;
+                this.physics.particles.forEach(p => {
+                    p.trail = [{x: p.pos.x, y: p.pos.y}];
+                });
+            }
+        }
+        
+        this.draw();
+        requestAnimationFrame(() => this.animate());
+    }
+
+    draw() {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        if (this.viewMode === 'cartesian') {
+            this.drawCartesianGrid(ctx);
+        } else {
+            this.drawPolarGrid(ctx);
+        }
+
+        this.drawRegions(ctx);
+        this.drawParticles(ctx);
+    }
+
+    drawCartesianGrid(ctx) {
+        ctx.strokeStyle = '#e0e0e0';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "#666";
+        ctx.font = "10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.setLineDash([]); 
+        
+        let gridSize = 0.1; 
+        while (gridSize * this.scale < 50) gridSize *= 10;
+        while (gridSize * this.scale > 200) gridSize /= 10;
+
+        const tl = this.s2w(0, 0);
+        const br = this.s2w(this.canvas.width, this.canvas.height);
+
+        const startX = Math.floor(tl.x / gridSize) * gridSize;
+        const endX = Math.ceil(br.x / gridSize) * gridSize;
+        const startY = Math.floor(br.y / gridSize) * gridSize; 
+        const endY = Math.ceil(tl.y / gridSize) * gridSize;
+
+        const origin = this.w2s(0, 0);
+
+        ctx.beginPath();
+        for (let x = startX; x <= endX; x += gridSize) {
+            const s = this.w2s(x, 0);
+            ctx.moveTo(s.x, 0);
+            ctx.lineTo(s.x, this.canvas.height);
+            
+            if (Math.abs(x) > 1e-10) { 
+                ctx.fillText(Utils.formatNumber(x), s.x, origin.y + 4);
+                ctx.moveTo(s.x, origin.y);
+                ctx.lineTo(s.x, origin.y + 4);
+            }
+        }
+        ctx.stroke();
+
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.beginPath();
+        const minY = Math.min(startY, endY), maxY = Math.max(startY, endY);
+        for (let y = minY; y <= maxY; y += gridSize) {
+            const s = this.w2s(0, y);
+            ctx.moveTo(0, s.y);
+            ctx.lineTo(this.canvas.width, s.y);
+
+            if (Math.abs(y) > 1e-10) { 
+                ctx.fillText(Utils.formatNumber(y), origin.x - 4, s.y);
+                ctx.moveTo(origin.x, s.y);
+                ctx.lineTo(origin.x - 4, s.y);
+            }
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, origin.y);
+        ctx.lineTo(this.canvas.width, origin.y);
+        ctx.moveTo(origin.x, 0);
+        ctx.lineTo(origin.x, this.canvas.height);
+        ctx.stroke();
+
+        ctx.fillText("0", origin.x - 4, origin.y + 4);
+    }
+
+    drawPolarGrid(ctx) {
+        ctx.strokeStyle = '#e0e0e0';
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "#888";
+        ctx.font = "10px sans-serif";
+        ctx.setLineDash([]); 
+
+        const origin = this.w2s(0, 0);
+        const maxR = Math.max(this.canvas.width, this.canvas.height) / this.scale * 1.5;
+
+        let rStep = 0.1;
+        while (rStep * this.scale < 50) rStep *= 10;
+        while (rStep * this.scale > 200) rStep /= 10;
+
+        ctx.beginPath();
+        ctx.textAlign = "left";
+        ctx.textBaseline = "bottom";
+        for (let r = rStep; r < maxR; r += rStep) {
+            const screenR = r * this.scale;
+            ctx.moveTo(origin.x + screenR, origin.y);
+            ctx.arc(origin.x, origin.y, screenR, 0, Math.PI * 2);
+            ctx.fillText(Utils.formatNumber(r), origin.x + screenR + 2, origin.y - 2);
+        }
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const maxScreenDim = Math.max(this.canvas.width, this.canvas.height);
+        for (let ang = 0; ang < 360; ang += 30) {
+            const rad = ang * Math.PI / 180;
+            const endX = origin.x + Math.cos(rad) * maxScreenDim * 2;
+            const endY = origin.y - Math.sin(rad) * maxScreenDim * 2;
+            
+            ctx.moveTo(origin.x, origin.y);
+            ctx.lineTo(endX, endY);
+
+            const textR = Math.min(this.canvas.width, this.canvas.height) * 0.45;
+            const tx = origin.x + Math.cos(rad) * textR;
+            const ty = origin.y - Math.sin(rad) * textR;
+            ctx.fillText(ang + "°", tx, ty);
+        }
+        ctx.stroke();
+
+        ctx.fillStyle = '#666';
+        ctx.beginPath();
+        ctx.arc(origin.x, origin.y, 3, 0, Math.PI*2);
+        ctx.fill();
+    }
+
+    drawRegions(ctx) {
+        ctx.setLineDash([]); 
+        for (let r of this.physics.regions) {
+            ctx.save();
+            ctx.fillStyle = r.type === 'magnetic' ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255, 193, 7, 0.2)';
+            ctx.strokeStyle = r.type === 'magnetic' ? '#2196F3' : '#FFC107';
+            ctx.lineWidth = 2;
+
+            if (r.shape === 'uniform') {
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            } 
+            else if (r.shape === 'rect') {
+                const center = this.w2s(r.cx, r.cy);
+                ctx.translate(center.x, center.y);
+                ctx.rotate(r.angle); 
+                ctx.beginPath();
+                ctx.rect(-r.w * this.scale / 2, -r.h * this.scale / 2, r.w * this.scale, r.h * this.scale);
+                ctx.fill();
+                ctx.stroke();
+                ctx.rotate(-r.angle);
+                this.drawFieldSymbol(ctx, 0, 0, r);
+            } 
+            else if (r.shape === 'circle') {
+                const center = this.w2s(r.cx, r.cy);
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, r.r * this.scale, 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+                this.drawFieldSymbol(ctx, center.x, center.y, r);
+            }
+            ctx.restore();
+        }
+    }
+
+    drawFieldSymbol(ctx, x, y, r) {
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        let symbol = "E";
+        if (r.type === 'magnetic') symbol = r.Bz < 0 ? "×" : "•"; 
+        ctx.font = "16px Arial";
+        ctx.fillText(symbol, x, y);
+    }
+
+    drawParticles(ctx) {
+        for (let p of this.physics.particles) {
+            if (p.trail.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]); 
+                ctx.globalAlpha = 0.6;
+                for (let i = 0; i < p.trail.length; i++) {
+                    const pos = this.w2s(p.trail[i].x, p.trail[i].y);
+                    if (i === 0) ctx.moveTo(pos.x, pos.y);
+                    else ctx.lineTo(pos.x, pos.y);
+                }
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+                ctx.setLineDash([]);
+            }
+
+            const pos = this.w2s(p.pos.x, p.pos.y);
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, p.radius, 0, Math.PI*2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+
+            if (this.highlightedParticleId === p.id) {
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, p.radius * 3, 0, Math.PI*2);
+                ctx.strokeStyle = '#FFEB3B';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+
+            const vMag = Math.hypot(p.vel.x, p.vel.y);
+            if (vMag > 1e-10) {
+                const arrowLen = 35; 
+                const angle = Math.atan2(-p.vel.y, p.vel.x); 
+                
+                const endX = pos.x + Math.cos(angle) * arrowLen;
+                const endY = pos.y + Math.sin(angle) * arrowLen;
+
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = '#455A64';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                const headLen = 8;
+                ctx.beginPath();
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(endX - headLen * Math.cos(angle - Math.PI/6), endY - headLen * Math.sin(angle - Math.PI/6));
+                ctx.lineTo(endX - headLen * Math.cos(angle + Math.PI/6), endY - headLen * Math.sin(angle + Math.PI/6));
+                ctx.fillStyle = '#455A64';
+                ctx.fill();
+            }
+        }
+    }
+
+    onMouseDown(e) {
+        this.isDragging = true;
+        this.lastMouse = { x: e.clientX, y: e.clientY };
+
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const wPos = this.s2w(mx, my);
+
+        let clickedRegionId = null;
+        for (let i = this.physics.regions.length - 1; i >= 0; i--) {
+            const r = this.physics.regions[i];
+            if (r.contains(wPos.x, wPos.y)) {
+                clickedRegionId = r.id;
+                break;
+            }
+        }
+
+        if (clickedRegionId !== null) {
+            this.highlightObjectInList(clickedRegionId);
+        }
+    }
+
+    highlightObjectInList(id) {
+        this.switchTab('manage');
+        setTimeout(() => {
+            const el = document.getElementById(`list-item-region-${id}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.style.backgroundColor = "#ffe082";
+                setTimeout(() => el.style.backgroundColor = "", 1000);
+            }
+        }, 50);
+    }
+
+    onMouseMove(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const wPos = this.s2w(mx, my);
+
+        let coordText = "";
+        const r = Math.hypot(wPos.x, wPos.y);
+        let theta = Math.atan2(wPos.y, wPos.x) * 180 / Math.PI;
+        if (theta < 0) theta += 360;
+
+        if (this.viewMode === 'cartesian') {
+            coordText = `(x=${wPos.x.toFixed(3)}, y=${wPos.y.toFixed(3)})`;
+        } else {
+            coordText = `(r=${r.toFixed(3)}, θ=${theta.toFixed(1)}°)`;
+        }
+        document.getElementById('status-mouse').innerText = `鼠标: ${coordText}`;
+
+        if (this.isDragging) {
+            const dx = e.clientX - this.lastMouse.x;
+            const dy = e.clientY - this.lastMouse.y;
+            this.offsetX += dx;
+            this.offsetY += dy;
+            this.lastMouse = { x: e.clientX, y: e.clientY };
+            this.draw(); 
+        }
+    }
+
+    onWheel(e) {
+        e.preventDefault();
+        const zoomRate = 0.1;
+        const delta = e.deltaY > 0 ? (1 - zoomRate) : (1 + zoomRate);
+        
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const worldBefore = this.s2w(mx, my);
+
+        this.scale *= delta;
+        this.scale = Math.max(1, Math.min(this.scale, 1e8));
+
+        this.offsetX = mx - worldBefore.x * this.scale;
+        this.offsetY = my + worldBefore.y * this.scale;
+
+        const unit = this.scale;
+        document.getElementById('status-scale').innerText = `比例: 1px ≈ ${(1/unit).toExponential(1)}m`;
+        
+        this.draw();
+    }
+}
+
+let app;
+window.onload = () => {
+    app = new SimulationApp();
+};
+</script>
+
+</body></html>

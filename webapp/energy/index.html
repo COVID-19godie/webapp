@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高中物理：究极实验室 V13.1 (能量无损连接版)</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link href="https://fonts.loli.net/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { 
+            --accent: #00e5ff; --accent-hover: #00b8cc; 
+            --warn: #ff3d00; --bg: #121212; --panel: #1e1e1e; 
+            --border: #333; --text: #e0e0e0; --text-muted: #888;
+        }
+        body { margin: 0; height: 100vh; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; overflow: hidden; display: flex; flex-direction: column; }
+        
+        .navbar {
+            height: 50px; background: var(--panel); border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 20px; justify-content: space-between; z-index: 20;
+        }
+        .brand { font-weight: 600; color: var(--accent); font-size: 16px; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+        
+        .nav-controls { display: flex; align-items: center; gap: 20px; }
+        .control-group { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); background: #252525; padding: 4px 12px; border-radius: 20px; border: 1px solid #333; }
+        input[type=range] { accent-color: var(--accent); cursor: pointer; height: 4px; }
+        input[type=checkbox] { accent-color: var(--accent); transform: scale(1.1); cursor: pointer; }
+
+        .workspace { flex: 1; display: flex; overflow: hidden; position: relative; }
+        .sidebar-left { width: 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+        .canvas-area { flex: 1; position: relative; background: radial-gradient(circle at center, #2a2a2a 0%, #000 100%); overflow: hidden; cursor: crosshair; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .sidebar-right { width: 300px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; padding: 10px; gap: 10px; }
+
+        .panel-section { padding: 15px; border-bottom: 1px solid #2a2a2a; }
+        .section-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.5px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .tool-btn { 
+            background: #2a2a2a; border: 1px solid var(--border); color: #ccc; padding: 10px; border-radius: 6px; 
+            cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 12px; transition: 0.2s;
+            text-align: center;
+        }
+        .tool-btn:hover { background: #333; color: white; border-color: var(--accent); transform: translateY(-1px); }
+        .tool-list-btn { width: 100%; text-align: left; padding: 10px 15px; display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+
+        .prop-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; background: #252525; padding: 6px 10px; border-radius: 4px; }
+        .prop-row label { color: #aaa; }
+        .prop-row input, .prop-row select { 
+            width: 80px; background: transparent; border: none; color: var(--accent); text-align: right; outline: none; font-family: monospace; font-size: 13px; font-weight: bold;
+        }
+        .prop-row input:focus { background: #333; }
+        .prop-row select { width: 100px; cursor: pointer; text-align-last: right; }
+
+        .floating-bar {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(30,30,30,0.9); backdrop-filter: blur(10px);
+            border-radius: 40px; border: 1px solid #444;
+            display: flex; align-items: center; padding: 5px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6); z-index: 50;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 400px; overflow: hidden;
+        }
+        .floating-bar.collapsed { max-width: 50px; background: rgba(30,30,30,0.6); }
+        .bar-content {
+            display: flex; align-items: center; gap: 20px; padding: 5px 15px 5px 20px; white-space: nowrap;
+            opacity: 1; transition: opacity 0.2s ease;
+        }
+        .floating-bar.collapsed .bar-content { opacity: 0; pointer-events: none; width: 0; padding: 0; margin: 0; display: none; }
+        .toggle-btn {
+            width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent; color: #888; font-size: 14px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center; transition: 0.2s; margin-left: auto;
+        }
+        .toggle-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        .btn-circle { width: 44px; height: 44px; border-radius: 50%; border: none; font-size: 20px; cursor: pointer; color: white; background: #444; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
+        .btn-play { background: #00c853; width: 50px; height: 50px; font-size: 24px; }
+        .btn-play:hover { transform: scale(1.1); box-shadow: 0 0 15px rgba(0,200,83,0.5); }
+        .btn-danger { background: rgba(255,61,0,0.2); color: var(--warn); }
+        .btn-danger:hover { background: var(--warn); color: white; }
+        .btn-quick { background: var(--accent); color: #000; font-weight: bold; width: 100%; border: none; padding: 8px; border-radius: 4px; cursor: pointer; margin-top: 5px; font-size: 12px; }
+        .btn-quick:hover { opacity: 0.9; }
+
+        .chart-wrapper { background: #252525; border-radius: 6px; padding: 10px; height: 160px; border: 1px solid #333; margin-bottom: 5px;}
+        .watermark { position: absolute; bottom: 20px; left: 20px; opacity: 0.3; font-size: 12px; pointer-events: none; color: #fff; line-height: 1.5; }
+        .toast { position: absolute; top: 20px; left: 50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:var(--accent); padding:8px 20px; border-radius:20px; font-size:13px; opacity:0; transition:0.3s; pointer-events:none; border:1px solid var(--accent); z-index: 100;}
+        .toast.show { opacity: 1; top: 30px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="brand">⚛️ 究极实验室 <span style="font-size:10px; background:#333; padding:2px 6px; border-radius:4px; color:#aaa">V13.1 能量无损版</span></div>
+        <div class="nav-controls">
+            <div class="control-group">
+                <span>⏱️ 速度</span>
+                <input type="range" id="speed-slider" min="0.1" max="3.0" step="0.1" value="1.0" oninput="app.setSpeed(this.value)">
+                <span id="speed-val" style="width:30px; text-align:right">1.0x</span>
+            </div>
+            <div class="control-group">
+                <label style="cursor:pointer; display:flex; align-items:center; gap:5px"><input type="checkbox" id="chk-fbd" checked onchange="app.renderFBD=this.checked"> 受力</label>
+                <div style="width:1px; height:12px; background:#444; margin:0 5px"></div>
+                <label style="cursor:pointer; display:flex; align-items:center; gap:5px"><input type="checkbox" id="chk-trace" checked onchange="app.renderTrace=this.checked"> 轨迹</label>
+            </div>
+        </div>
+    </nav>
+
+    <div class="workspace">
+        <div class="sidebar-left">
+            <div class="panel-section">
+                <div class="section-title">🛠️ 创建物体</div>
+                <div class="grid-2">
+                    <div class="tool-btn" onclick="app.spawn('block')"><div>⬜</div>滑块</div>
+                    <div class="tool-btn" onclick="app.spawn('ball')"><div>⚪</div>小球</div>
+                    <div class="tool-btn" onclick="app.spawn('board')"><div>▬</div>木板</div>
+                    <div class="tool-btn" onclick="app.spawn('ramp')"><div>📐</div>长板/斜面</div>
+                    <div class="tool-btn" onclick="app.spawn('conveyor')"><div>🎢</div>传送带</div>
+                    <div class="tool-btn" onclick="app.spawn('spring')"><div>Mw</div>弹簧</div>
+                </div>
+            </div>
+            <div class="panel-section">
+                <div class="section-title">📚 经典模型</div>
+                <div class="tool-btn tool-list-btn" onclick="app.loadPreset('collision_elastic')">💥 完全弹性碰撞</div>
+                <div class="tool-btn tool-list-btn" onclick="app.loadPreset('collision_inelastic')">🧱 完全非弹性碰撞</div>
+                <div class="tool-btn tool-list-btn" onclick="app.loadPreset('friction_test')">⛸️ 滑块摩擦力实验</div>
+                <div class="tool-btn tool-list-btn" onclick="app.loadPreset('block_on_board')">🥞 板块模型</div>
+                <div class="tool-btn tool-list-btn" onclick="app.loadPreset('free_fall_proj')">🎯 平抛 vs 自由落体</div>
+            </div>
+        </div>
+
+        <div class="canvas-area" id="canvas-container">
+            <canvas id="simCanvas"></canvas>
+            <div class="watermark">南阳一中 张铭戈<br>公众号: 戈悟志理琢瑷成器</div>
+            <div id="toast" class="toast">提示信息</div>
+            
+            <div class="floating-bar" id="ctrlBar">
+                <div class="bar-content">
+                    <button class="btn-circle btn-icon" onclick="app.reset()" title="重置">↺</button>
+                    <button id="btn-run" class="btn-circle btn-play" onclick="app.toggleRun()" title="播放/暂停">▶</button>
+                    <button class="btn-circle btn-icon btn-danger" onclick="app.clear()" title="清空">🗑️</button>
+                    <div id="status-txt" style="font-size:12px; color:#aaa; font-weight:bold; min-width:60px; text-align:center">PAUSED</div>
+                    <div style="width:1px; height:20px; background:#444"></div>
+                </div>
+                <button class="toggle-btn" onclick="app.toggleBar()" title="折叠/展开">▶</button>
+            </div>
+        </div>
+
+        <div class="sidebar-right">
+            <div class="section-title">📊 实时数据</div>
+            <div class="chart-wrapper"><canvas id="velChartCanvas"></canvas></div>
+            <div class="chart-wrapper"><canvas id="energyChartCanvas"></canvas></div>
+            <div style="margin-top:10px; border-top:1px solid #333; padding-top:15px">
+                <div class="section-title">⚙️ 属性控制</div>
+                <div id="prop-panel" style="color:#666; font-size:12px; text-align:center; padding:20px; border:1px dashed #333; border-radius:4px;">点击物体查看详情</div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// --- 向量库 ---
+const Vec = {
+    add: (v1, v2) => ({x: v1.x + v2.x, y: v1.y + v2.y}),
+    sub: (v1, v2) => ({x: v1.x - v2.x, y: v1.y - v2.y}),
+    mul: (v, s) => ({x: v.x * s, y: v.y * s}),
+    mag: (v) => Math.sqrt(v.x**2 + v.y**2),
+    rot: (v, a) => ({ x: v.x*Math.cos(a) - v.y*Math.sin(a), y: v.x*Math.sin(a) + v.y*Math.cos(a) }),
+    dist: (v1, v2) => Math.sqrt((v1.x-v2.x)**2 + (v1.y-v2.y)**2),
+    dot: (v1, v2) => v1.x * v2.x + v1.y * v2.y
+};
+
+// --- 配置 ---
+const CFG = { g: 9.8, scale: 100, dt: 1/120, subSteps: 10, forceScale: 0.4, timeScale: 1.0 };
+
+class Entity {
+    constructor(type, x, y) {
+        this.id = Math.random().toString(36).substr(2);
+        this.type = type;
+        this.pos = {x, y};
+        this.vel = {x:0, y:0};
+        this.initVel = {x:0, y:0}; 
+        this.angle = 0;
+        this.mass = 1.0;
+        this.mu = 0.2; 
+        this.restitution = 0.5; 
+        this.static = false;
+        this.w = 60; this.h = 40; this.r = 20; 
+        this.color = '#ccc';
+        
+        if(type==='block') { this.color='#00e5ff'; this.mass=1; this.mu = 0.2; }
+        if(type==='ball') { this.color='#adff2f'; this.r=20; this.mass=1; this.restitution=0.9; this.mu=0.0; } 
+        if(type==='board') { this.color='#ff9800'; this.w=300; this.h=15; this.static=true; }
+        if(type==='ramp') { this.color='#546e7a'; this.w=300; this.h=20; this.static=true; } 
+        if(type==='conveyor') { this.color='#76ff03'; this.w=350; this.h=20; this.static=true; this.speed = 2.0; }
+        if(type==='spring') { 
+            this.color='#fff'; this.w=30; this.h=100; this.static=true; 
+            this.k = 200; this.len = 100; this.damping = 2.0; this.currentLen = 100; 
+        }
+        this.forces = []; 
+    }
+}
+
+const physics = {
+    entities: [],
+    
+    // 平滑连接判定阈值：只要不是垂直高速撞击，都视为平滑过渡
+    smoothThresh: 300, 
+
+    step(dt) {
+        const effectiveDt = dt * CFG.timeScale;
+        const subDt = effectiveDt / CFG.subSteps;
+        
+        this.entities.forEach(e => { 
+            e.forces = []; 
+            if(e.type === 'spring') e.currentLen = e.len; 
+        });
+
+        for(let s=0; s<CFG.subSteps; s++) {
+            this.entities.forEach(a => {
+                if (a.static || app.dragging === a) return;
+
+                // 1. 重力
+                let F = {x:0, y: a.mass * CFG.g * CFG.scale}; 
+                if(s===0) this.addForce(a, 'G', {x:0, y: a.mass * CFG.g * 10}, '#ffff00');
+
+                // 2. 弹簧
+                this.solveSprings(a, F);
+                
+                // 3. 速度/位置更新
+                a.vel.x += (F.x / a.mass) * subDt;
+                a.vel.y += (F.y / a.mass) * subDt;
+                a.pos.x += a.vel.x * subDt;
+                a.pos.y += a.vel.y * subDt;
+
+                // 4. 静态碰撞 (核心优化点)
+                this.solveStaticCollisions(a, subDt, s===0);
+            });
+            // 5. 动态碰撞
+            this.solveDynamicCollisions(subDt);
+        }
+    },
+
+    addForce(ent, name, vec, color) {
+        ent.forces.push({name, vec: Vec.mul(vec, CFG.forceScale), color});
+    },
+
+    solveSprings(a, F) {
+        this.entities.forEach(b => {
+            if (b.type !== 'spring') return;
+            const rel = Vec.sub(a.pos, b.pos);
+            const local = Vec.rot(rel, -b.angle);
+            const halfW = b.w/2 + (a.r || a.w/2);
+            if (Math.abs(local.x) < halfW && local.y < 20 && local.y > -b.len - 60) {
+                const distFromAnchor = -local.y - (a.r || a.h/2);
+                const compression = b.len - distFromAnchor;
+                if (compression > 0) {
+                    if (b.currentLen > distFromAnchor) b.currentLen = Math.max(10, distFromAnchor);
+                    let fMag = b.k * compression;
+                    const vLocal = Vec.rot(a.vel, -b.angle);
+                    const fDamp = -vLocal.y * b.damping; 
+                    let fTotal = Math.max(0, fMag + fDamp); 
+                    const fVecLocal = {x: 0, y: -fTotal};
+                    const fVecWorld = Vec.rot(fVecLocal, b.angle);
+                    F.x += fVecWorld.x; F.y += fVecWorld.y;
+                }
+            }
+        });
+    },
+
+    // --- 核心优化：高中理想平滑连接 ---
+    solveStaticCollisions(a, dt, record) {
+        const groundY = app.groundY || 600; 
+        const r = (a.type==='ball' ? a.r : a.h/2);
+        
+        // --- A. 地面 ---
+        if (a.pos.y > groundY - r) {
+            // 1. 位置强行修正
+            a.pos.y = groundY - r; 
+            
+            // 2. 理想能量无损过渡
+            // 如果在下落撞击，判定是否为“过渡”
+            if (a.vel.y > 0) {
+                if (a.vel.y < this.smoothThresh) {
+                    // 【高中物理逻辑】：这不叫碰撞，叫“滑上水平面”
+                    // 速度大小不变，方向变为水平
+                    const oldSpeed = Vec.mag(a.vel);
+                    const dir = Math.sign(a.vel.x) || 1;
+                    a.vel.x = oldSpeed * dir;
+                    a.vel.y = 0; // 垂直分量清零，但它的能量完全转移到了水平分量
+                } else {
+                    // 只有垂直高速撞击才反弹 (e.g. 自由落体)
+                    a.vel.y = -a.vel.y * a.restitution;
+                }
+            }
+
+            // 3. 摩擦力 (Fn = mg)
+            const Fn = a.mass * CFG.g * CFG.scale;
+            if (record) this.addForce(a, 'Fn', {x:0, y:-Fn*0.1}, '#76ff03');
+
+            if (Math.abs(a.vel.x) > 0.01) {
+                const friction = Fn * a.mu * dt / a.mass;
+                if (Math.abs(a.vel.x) <= friction) a.vel.x = 0;
+                else a.vel.x -= Math.sign(a.vel.x) * friction;
+            }
+        }
+
+        // --- B. 墙/斜面/传送带 ---
+        this.entities.forEach(wall => {
+            if (wall === a || (!wall.static && wall.type !== 'block')) return;
+            if (!['board', 'ramp', 'conveyor', 'block'].includes(wall.type)) return;
+
+            const rel = Vec.sub(a.pos, wall.pos);
+            const local = Vec.rot(rel, -wall.angle);
+            const wW = wall.w/2 + (a.type==='ball'?a.r:a.w/2);
+            const wH = wall.h/2 + (a.type==='ball'?a.r:a.h/2);
+
+            if (Math.abs(local.x) < wW && Math.abs(local.y) < wH) {
+                if (local.y < 0) { 
+                    const depth = wH - Math.abs(local.y);
+                    const normal = Vec.rot({x:0, y:-1}, wall.angle); 
+                    const tangent = Vec.rot({x:1, y:0}, wall.angle); 
+                    
+                    // 1. 位置修正
+                    a.pos = Vec.add(a.pos, Vec.mul(normal, depth));
+
+                    // 2. 传送带速度
+                    let wallV = {x:0, y:0};
+                    if (wall.type === 'conveyor') wallV = Vec.mul(tangent, wall.speed * CFG.scale);
+                    
+                    let vReal = Vec.sub(a.vel, wallV);
+                    let vN = Vec.dot(vReal, normal);
+                    
+                    if (vN < 0) { 
+                        // --- 核心：能量守恒转折 ---
+                        if (Math.abs(vN) < this.smoothThresh) {
+                            // 认为这是“平滑连接点”
+                            // 1. 获取进入碰撞前的总速率 (相对于传送带表面)
+                            const oldSpeed = Vec.mag(vReal);
+                            
+                            // 2. 确定沿切线的运动方向 (是向上滑还是向下滑)
+                            const vT_dir = Math.sign(Vec.dot(vReal, tangent)) || 1;
+                            
+                            // 3. 强制重置速度矢量：大小=oldSpeed，方向=切线
+                            // 这样就实现了“只改变方向，不改变大小”
+                            const vFinalRel = Vec.mul(tangent, oldSpeed * vT_dir);
+                            a.vel = Vec.add(vFinalRel, wallV);
+
+                            // 法向速度在计算摩擦前归零，防止计算干扰
+                            vN = 0;
+                        } else {
+                            // 高速撞击（比如扔球砸墙），正常反弹
+                            let newVN = vN * -Math.min(a.restitution, wall.restitution||0.5);
+                            let vT = Vec.dot(vReal, tangent);
+                            a.vel = Vec.add(wallV, Vec.add(Vec.mul(normal, newVN), Vec.mul(tangent, vT)));
+                        }
+
+                        // 摩擦力处理
+                        let Fn = a.mass * CFG.g * CFG.scale * Math.cos(wall.angle);
+                        if (Math.abs(vN) > 1) Fn += Math.abs(vN) * a.mass * 10; 
+
+                        // 重新获取切向速度用于摩擦减速
+                        vReal = Vec.sub(a.vel, wallV);
+                        let vT_val = Vec.dot(vReal, tangent);
+
+                        const fMax = Fn * a.mu * dt / a.mass;
+                        if (Math.abs(vT_val) > 0.01) {
+                            // 摩擦只减小切向速度的大小
+                            let newVT = vT_val;
+                            if (Math.abs(vT_val) <= fMax) newVT = 0;
+                            else newVT -= Math.sign(vT_val) * fMax;
+                            
+                            // 应用摩擦后的切向速度 + 保持0的法向速度
+                            a.vel = Vec.add(wallV, Vec.mul(tangent, newVT));
+                        }
+
+                        if(record) this.addForce(a, 'Fn', Vec.mul(normal, Fn*0.1), '#76ff03');
+                    }
+                }
+            }
+        });
+    },
+
+    solveDynamicCollisions(dt) {
+        // 动态物体间碰撞
+        for (let i = 0; i < this.entities.length; i++) {
+            for (let j = i + 1; j < this.entities.length; j++) {
+                const a = this.entities[i];
+                const b = this.entities[j];
+                
+                if ((a.static && b.static) || a.type === 'spring' || b.type === 'spring') continue;
+                if (Math.abs(a.pos.x - b.pos.x) > 200 || Math.abs(a.pos.y - b.pos.y) > 200) continue;
+
+                const dist = Vec.dist(a.pos, b.pos);
+                const rA = a.type==='ball'?a.r : Math.min(a.w,a.h)/2; 
+                const rB = b.type==='ball'?b.r : Math.min(b.w,b.h)/2;
+                const minDist = rA + rB;
+
+                if (dist < minDist && dist > 0.1) {
+                    const normal = Vec.mul(Vec.sub(b.pos, a.pos), 1/dist); 
+                    const overlap = minDist - dist;
+                    const totalMass = (a.static?0:a.mass) + (b.static?0:b.mass);
+                    if (totalMass > 0) {
+                        const movePer = overlap; 
+                        if(!a.static) a.pos = Vec.sub(a.pos, Vec.mul(normal, movePer * (b.static?1.0:0.5)));
+                        if(!b.static) b.pos = Vec.add(b.pos, Vec.mul(normal, movePer * (a.static?1.0:0.5)));
+                    }
+
+                    const relVel = Vec.sub(b.vel, a.vel);
+                    const vN = Vec.dot(relVel, normal);
+                    if (vN > 0) continue; 
+
+                    let e = Math.min(a.restitution, b.restitution);
+                    // 堆叠稳定化
+                    if (Math.abs(vN) < 20) e = 0; 
+
+                    let j = -(1 + e) * vN;
+                    const invMassA = a.static ? 0 : 1 / a.mass;
+                    const invMassB = b.static ? 0 : 1 / b.mass;
+                    j /= (invMassA + invMassB);
+
+                    const impulse = Vec.mul(normal, j);
+                    if(!a.static) a.vel = Vec.sub(a.vel, Vec.mul(impulse, invMassA));
+                    if(!b.static) b.vel = Vec.add(b.vel, Vec.mul(impulse, invMassB));
+                    
+                    const tangent = {x: -normal.y, y: normal.x};
+                    const vT = Vec.dot(relVel, tangent);
+                    const mu = Math.sqrt(a.mu * b.mu);
+                    let fImpulse = -vT * mu * Math.abs(j); 
+                    
+                    const maxF = Math.abs(vT) / (invMassA+invMassB);
+                    if(Math.abs(fImpulse) > maxF) fImpulse = -Math.sign(vT) * maxF;
+
+                    const friction = Vec.mul(tangent, fImpulse); 
+                    if(!a.static) a.vel = Vec.sub(a.vel, Vec.mul(friction, invMassA));
+                    if(!b.static) b.vel = Vec.add(b.vel, Vec.mul(friction, invMassB));
+                }
+            }
+        }
+    }
+};
+
+const app = {
+    canvas: document.getElementById('simCanvas'),
+    ctx: document.getElementById('simCanvas').getContext('2d'),
+    running: false,
+    selected: null,
+    history: [],
+    renderFBD: true,
+    renderTrace: true,
+    groundY: 600,
+    tracePoints: [],
+    isCollapsed: false,
+    
+    init() {
+        this.resize();
+        window.onresize = () => this.resize();
+        this.canvas.addEventListener('mousedown', e => this.onDown(e));
+        window.addEventListener('mousemove', e => this.onMove(e));
+        window.addEventListener('mouseup', e => this.onUp(e));
+        window.addEventListener('keydown', e => {
+            if(e.code === 'Space') { e.preventDefault(); this.toggleRun(); }
+            if(e.key === 'Delete' || e.key === 'Backspace') this.delSelected();
+        });
+        this.createGroundPattern();
+        this.loop();
+    },
+
+    createGroundPattern() {
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 20; pCanvas.height = 20;
+        const pCtx = pCanvas.getContext('2d');
+        pCtx.fillStyle = '#1e1e1e'; pCtx.fillRect(0,0,20,20);
+        pCtx.strokeStyle = '#2a2a2a'; pCtx.lineWidth = 1;
+        pCtx.beginPath(); pCtx.moveTo(0,20); pCtx.lineTo(20,0); pCtx.stroke();
+        this.groundPattern = this.ctx.createPattern(pCanvas, 'repeat');
+    },
+
+    spawn(type) {
+        this.saveState();
+        const cx = this.canvas.width/2;
+        const gy = this.groundY;
+        let cy = gy - 100;
+        if(type==='board' || type==='conveyor' || type==='ramp') cy = gy - 40;
+        
+        const e = new Entity(type, cx, cy);
+        if(type==='spring') e.pos.y = gy; 
+        if(type==='ramp') { e.angle = 0; e.w=300; e.h=20; } 
+        physics.entities.push(e);
+        this.select(e);
+    },
+
+    loadPreset(name) {
+        this.saveState(); 
+        this.running = false; 
+        this.clear(true);
+        const cx = this.canvas.width/2; 
+        const gy = this.groundY;
+        
+        if(name === 'friction_test') {
+            const block = new Entity('block', cx, gy-20); 
+            block.mass=1; block.mu=0.1; block.initVel.x=500; block.vel.x=500;
+            physics.entities.push(block);
+            this.toast('已加载：给滑块初速度，观察摩擦减速');
+        } else if(name === 'collision_elastic') {
+            const ball1 = new Entity('ball', cx-200, gy-20); ball1.mass=2; ball1.initVel.x=300; ball1.vel.x=300; ball1.restitution=1.0; ball1.mu=0; ball1.color='#00e5ff';
+            const ball2 = new Entity('ball', cx+200, gy-20); ball2.mass=2; ball2.initVel.x=-300; ball2.vel.x=-300; ball2.restitution=1.0; ball2.mu=0; ball2.color='#ff3d00';
+            physics.entities.push(ball1, ball2);
+        } else if(name === 'collision_inelastic') {
+            const b1 = new Entity('block', cx-200, gy-20); b1.mass=2; b1.initVel.x=300; b1.vel.x=300; b1.restitution=0.0; b1.color='#8d6e63';
+            const b2 = new Entity('block', cx+200, gy-20); b2.mass=2; b2.initVel.x=-300; b2.vel.x=-300; b2.restitution=0.0; b2.color='#795548';
+            physics.entities.push(b1, b2);
+        } else if(name === 'block_on_board') {
+            const board = new Entity('board', cx, gy-10); board.w = 500; board.static = false; board.mass=10; board.mu=0.05; 
+            const block = new Entity('block', cx-200, gy-50); block.mass=1; block.mu=0.4; block.initVel.x=400; block.vel.x=400;
+            physics.entities.push(board, block);
+        } else if(name === 'free_fall_proj') {
+            const b1 = new Entity('ball', cx-100, 100); b1.color='#ffeb3b'; 
+            const b2 = new Entity('ball', cx+100, 100); b2.color='#00e5ff'; b2.initVel.x = 400; b2.vel.x=400; 
+            physics.entities.push(b1, b2);
+        }
+        
+        this.running = true;
+        document.getElementById('btn-run').innerText = '⏸';
+        document.getElementById('status-txt').innerText = 'RUNNING';
+        this.updateUI();
+    },
+
+    draw() {
+        const ctx = this.ctx;
+        ctx.clearRect(0,0, this.canvas.width, this.canvas.height);
+
+        ctx.fillStyle = this.groundPattern || '#1a1a1a'; 
+        ctx.fillRect(0, this.groundY, this.canvas.width, this.canvas.height - this.groundY);
+        ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 2; 
+        ctx.beginPath(); ctx.moveTo(0, this.groundY); ctx.lineTo(this.canvas.width, this.groundY); ctx.stroke();
+
+        if(this.renderTrace && this.tracePoints.length > 1) {
+            ctx.beginPath(); ctx.strokeStyle = '#FFFF00'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            ctx.moveTo(this.tracePoints[0].x, this.tracePoints[0].y);
+            for(let i=1; i<this.tracePoints.length; i++) ctx.lineTo(this.tracePoints[i].x, this.tracePoints[i].y);
+            ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        physics.entities.forEach(e => {
+            ctx.save(); ctx.translate(e.pos.x, e.pos.y); ctx.rotate(e.angle);
+            ctx.fillStyle = e.color;
+            if(e.type === 'spring') this.drawSpring(ctx, e);
+            else if (e.type === 'conveyor') this.drawConveyor(ctx, e);
+            else if (e.type === 'ball') {
+                ctx.beginPath(); ctx.arc(0,0,e.r,0,6.28); 
+                const grd = ctx.createRadialGradient(-5,-5,2,0,0,e.r);
+                grd.addColorStop(0, e.color); grd.addColorStop(1, "#333");
+                ctx.fillStyle = grd; ctx.fill();
+                ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+            } else {
+                ctx.fillRect(-e.w/2, -e.h/2, e.w, e.h);
+                ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=2; ctx.strokeRect(-e.w/2, -e.h/2, e.w, e.h);
+            }
+            ctx.restore();
+
+            // 绘制初速度箭头
+            if(!this.running && (Math.abs(e.initVel.x)>1 || Math.abs(e.initVel.y)>1)) {
+                this.drawArrow(ctx, e.pos, Vec.mul(e.initVel, 0.3), '#00ff00');
+            }
+
+            if(this.renderFBD && (this.running || this.selected===e)) {
+                e.forces.forEach(f => this.drawArrow(ctx, e.pos, f.vec, f.color));
+                if(this.running && !e.static && Vec.mag(e.vel)>1) this.drawArrow(ctx, e.pos, Vec.mul(e.vel, 0.3), '#00bfff'); 
+            }
+        });
+
+        if(this.selected) {
+            const s = this.selected;
+            ctx.save(); ctx.translate(s.pos.x, s.pos.y);
+            const r = (s.w || s.r*2)/2 + 30;
+            ctx.beginPath(); ctx.arc(0,0,r,0,6.28);
+            ctx.strokeStyle = this.mode==='rotate'?'#ff9800':'rgba(255,255,255,0.3)';
+            ctx.setLineDash([5,5]); ctx.lineWidth=1; ctx.stroke();
+            ctx.restore();
+        }
+    },
+
+    drawSpring(ctx, e) {
+        const drawLen = e.currentLen;
+        ctx.lineCap='round'; ctx.lineJoin='round';
+        ctx.beginPath(); ctx.moveTo(0,0);
+        const coils = 10; const width = 24; 
+        for(let i=1; i<=coils; i++) {
+            const y = (-drawLen / coils) * i;
+            const x = (i%2===0 ? width/2 : -width/2);
+            ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 6; ctx.stroke();
+        ctx.strokeStyle = e.color; ctx.lineWidth = 3; ctx.stroke();
+        ctx.fillStyle='#666'; ctx.fillRect(-18,-5,36,8); 
+        ctx.fillStyle=e.color; ctx.fillRect(-18,-drawLen-5,36,10); 
+    },
+    
+    drawConveyor(ctx, e) {
+        ctx.fillRect(-e.w/2, -e.h/2, e.w, e.h);
+        ctx.fillStyle = '#222';
+        ctx.beginPath(); ctx.arc(-e.w/2, 0, e.h/2+2, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(e.w/2, 0, e.h/2+2, 0, 6.28); ctx.fill();
+        if(this.running) {
+            const offset = (Date.now() * e.speed * CFG.timeScale * 0.15) % 30;
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            for(let i=-e.w/2; i<e.w/2; i+=30) {
+                let x = i + offset; if(x > e.w/2) x -= e.w;
+                ctx.fillRect(x, -e.h/2, 4, e.h);
+            }
+        }
+    },
+
+    drawArrow(ctx, pos, vec, color) {
+        if(Vec.mag(vec) < 5) return; 
+        const end = Vec.add(pos, vec);
+        ctx.save();
+        ctx.shadowBlur = 5; ctx.shadowColor = color;
+        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(pos.x, pos.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+        const angle = Math.atan2(vec.y, vec.x);
+        ctx.translate(end.x, end.y); ctx.rotate(angle);
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10, -5); ctx.lineTo(-10, 5); ctx.fill();
+        ctx.restore();
+    },
+
+    isHit(m, e) {
+        const rel = Vec.sub(m, e.pos);
+        const local = Vec.rot(rel, -e.angle);
+        const padding = 20; 
+        if(e.type === 'ball') return Vec.mag(rel) < e.r + padding;
+        if(e.type === 'spring') {
+            const h = e.currentLen; 
+            return Math.abs(local.x) < e.w/2+padding && local.y < padding && local.y > -h-padding;
+        }
+        return Math.abs(local.x) < e.w/2+padding && Math.abs(local.y) < e.h/2+padding;
+    },
+
+    onDown(e){ const m=this.getMouse(e); const hit=physics.entities.slice().reverse().find(b=>this.isHit(m,b));
+        if(hit){ this.select(hit); this.mode='drag'; this.dragOffset=Vec.sub(hit.pos,m); if(!this.running)this.saveState(); }
+        else if(this.selected){ 
+            const r=(this.selected.w||this.selected.r*2)/2+30;
+            if(Vec.dist(m,this.selected.pos)>r-15 && Vec.dist(m,this.selected.pos)<r+15){
+                this.saveState(); this.mode='rotate'; 
+                this.dragStartAngle=Math.atan2(m.y-this.selected.pos.y,m.x-this.selected.pos.x)-this.selected.angle;
+            } else this.select(null);
+        } else this.select(null);
+    },
+    
+    onMove(e){ 
+        const m=this.getMouse(e); if(!this.selected)return;
+        if(this.mode==='drag'){
+            let t = Vec.add(m,this.dragOffset);
+            if(!this.running && this.selected.type!=='spring'){
+                t = this.applySnapping(t, this.selected);
+            }
+            this.selected.pos=t; 
+            if(!this.running) {
+                this.selected.vel={x:0,y:0};
+            }
+        } else if(this.mode==='rotate'){
+            this.selected.angle = Math.atan2(m.y-this.selected.pos.y,m.x-this.selected.pos.x)-this.dragStartAngle;
+            this.updateUI();
+        }
+    },
+
+    applySnapping(pos, e) {
+        const SNAP_DIST = 25; 
+        const halfH = e.r || e.h/2;
+        let newPos = {x: pos.x, y: pos.y};
+        let snapped = false;
+
+        const supports = physics.entities.filter(o => o !== e && ['ramp', 'board', 'conveyor', 'block'].includes(o.type));
+        for (let o of supports) {
+            const dist = Vec.dist(pos, o.pos);
+            const combinedSize = Math.max(o.w, o.h) + Math.max(e.w, e.h); 
+            if (dist < combinedSize) {
+                const rel = Vec.sub(pos, o.pos);
+                const local = Vec.rot(rel, -o.angle); 
+                if (Math.abs(local.x) < o.w/2 + 10) {
+                    const targetY = -(o.h/2 + halfH); 
+                    if (Math.abs(local.y - targetY) < SNAP_DIST) {
+                        newPos = Vec.add(o.pos, Vec.rot({x: local.x, y: targetY}, o.angle));
+                        if (e.type === 'block') { e.angle = o.angle; this.updateUI(); }
+                        snapped = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!snapped) {
+            if (newPos.y + halfH > this.groundY - SNAP_DIST) {
+                newPos.y = this.groundY - halfH;
+                if (e.type === 'block') { e.angle = 0; this.updateUI(); }
+                snapped = true;
+            }
+        }
+        if (newPos.y + halfH > this.groundY) newPos.y = this.groundY - halfH;
+        return newPos;
+    },
+
+    onUp(){ this.mode='none'; },
+    loop(){ if(this.running){ physics.step(CFG.dt); this.updateCharts(); } this.draw(); requestAnimationFrame(()=>this.loop()); },
+    
+    toggleRun(){ 
+        this.running=!this.running; 
+        document.getElementById('btn-run').innerText=this.running?'⏸':'▶'; 
+        document.getElementById('status-txt').innerText=this.running?'RUNNING':'PAUSED'; 
+    },
+    
+    toggleBar(){
+        this.isCollapsed = !this.isCollapsed;
+        const bar = document.getElementById('ctrlBar');
+        const btn = bar.querySelector('.toggle-btn');
+        if(this.isCollapsed){ bar.classList.add('collapsed'); btn.innerHTML = '◀'; } 
+        else { bar.classList.remove('collapsed'); btn.innerHTML = '▶'; }
+    },
+    
+    reset(){ 
+        this.running=false; physics.totalHeat = 0; this.tracePoints=[];
+        physics.entities.forEach(e=>{
+            e.vel = {x: e.initVel.x, y: e.initVel.y}; 
+            e.pos = {x: e.pos.x, y: Math.min(e.pos.y, this.groundY-50)};
+            if(e.type==='spring')e.currentLen=e.len;
+        }); 
+        this.running = false; this.toggleRun(); 
+        velChart.data.labels=[]; velChart.data.datasets[0].data=[]; velChart.update();
+        energyChart.data.labels=[]; energyChart.data.datasets.forEach(d=>d.data=[]); energyChart.update();
+    },
+    
+    clear(s){ 
+        if(!s)this.saveState(); physics.entities=[]; physics.totalHeat=0; this.tracePoints=[]; this.selected=null; this.running=false; 
+        document.getElementById('btn-run').innerText='▶';
+        document.getElementById('status-txt').innerText='EMPTY';
+        this.updateUI(); 
+        velChart.data.labels=[]; velChart.data.datasets[0].data=[]; velChart.update(); 
+        energyChart.data.labels=[]; energyChart.data.datasets.forEach(d=>d.data=[]); energyChart.update();
+    },
+    
+    saveState(){ if(this.history.length>20)this.history.shift(); this.history.push(JSON.stringify(physics.entities)); },
+    undo(){ if(this.history.length>0){ physics.entities=JSON.parse(this.history.pop()); this.selected=null; this.updateUI(); this.toast('已撤销'); }},
+    select(e){ this.selected=e; this.updateUI(); },
+    delSelected(){ if(this.selected){ this.saveState(); physics.entities=physics.entities.filter(e=>e!==this.selected); this.selected=null; this.updateUI(); this.toast('已删除'); }},
+    resize(){ 
+        this.canvas.width=document.getElementById('canvas-container').offsetWidth; 
+        this.canvas.height=document.getElementById('canvas-container').offsetHeight; 
+        this.groundY = this.canvas.height - 40; 
+    },
+    getMouse(e){ const r=this.canvas.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; },
+    toast(m){ const t=document.getElementById('toast'); t.innerText=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1500); },
+    setSpeed(v){ CFG.timeScale = parseFloat(v); document.getElementById('speed-val').innerText = v + 'x'; },
+
+    updateUI(){ 
+        const p=document.getElementById('prop-panel'); if(!this.selected){p.innerHTML='点击物体查看详情';return;}
+        const s=this.selected;
+        let h=`<div style="color:var(--accent);font-weight:bold;margin-bottom:10px">${s.type.toUpperCase()}</div>`;
+        const inp=(l,k,st=1)=>`<div class="prop-row"><label>${l}</label><input type="number" step="${st}" value="${s[k]}" onchange="app.setProp('${k}',this.value)"></div>`;
+        
+        h+=inp('角度°','angle',15);
+        if(!s.static){ 
+            h+=inp('质量kg','mass',0.5); 
+            h+=`<div class="prop-row"><label>碰撞材质</label>
+                <select onchange="app.setRestitution(this.value)">
+                    <option value="1.0" ${Math.abs(s.restitution-1.0)<0.1?'selected':''}>完全弹性 e=1</option>
+                    <option value="0.9" ${Math.abs(s.restitution-0.9)<0.1?'selected':''}>高弹球 e=0.9</option>
+                    <option value="0.5" ${Math.abs(s.restitution-0.5)<0.1?'selected':''}>普通 e=0.5</option>
+                    <option value="0.0" ${Math.abs(s.restitution-0.0)<0.1?'selected':''}>非弹性 e=0</option>
+                </select></div>`;
+            h+=inp('弹性(0-1)','restitution',0.1); 
+            h+=inp('摩擦μ','mu',0.1); 
+            
+            h+=`<button class="btn-quick" onclick="app.makeIdeal()">✨ 设为理想刚体 (e=1, μ=0)</button>`;
+            
+            h+=`<div class="prop-row" style="margin-top:10px"><label>Vx(m/s)</label><input type="number" step="0.5" value="${(s.initVel.x/CFG.scale).toFixed(1)}" onchange="app.setVel('x',this.value)"></div>`;
+            h+=`<div class="prop-row"><label>Vy(↓+)</label><input type="number" step="0.5" value="${(s.initVel.y/CFG.scale).toFixed(1)}" onchange="app.setVel('y',this.value)"></div>`;
+        }
+        
+        h+=`<div style="margin:10px 0; border-top:1px solid #333; padding-top:5px; font-weight:bold; color:#aaa; font-size:11px">尺寸设置</div>`;
+        h+=inp('宽度(长)','w',10);
+        h+=inp('高度(厚)','h',10);
+
+        if(s.type==='conveyor') h+=inp('速度m/s','speed',0.5);
+        if(s.type==='spring') { h+=inp('劲度k','k',10); h+=inp('阻尼c','damping',1.0); }
+        p.innerHTML=h;
+    },
+    setProp(k,v){ if(this.selected){ this.saveState(); if(k==='angle')this.selected.angle=parseFloat(v)*Math.PI/180; else this.selected[k]=parseFloat(v); } },
+    setRestitution(v){ if(this.selected){ this.saveState(); this.selected.restitution=parseFloat(v); this.updateUI(); } },
+    setVel(axis, v){
+        if(this.selected){
+            this.saveState();
+            const val = parseFloat(v) * CFG.scale;
+            this.selected.initVel[axis] = val;
+            if(!this.running) this.selected.vel[axis] = val;
+        }
+    },
+    makeIdeal(){
+        if(this.selected) {
+            this.saveState();
+            this.selected.restitution = 1.0;
+            this.selected.mu = 0.0;
+            this.updateUI();
+            this.toast('已设置为：完全弹性，无摩擦');
+        }
+    },
+    saveScene(){ navigator.clipboard.writeText(JSON.stringify(physics.entities)).then(()=>this.toast('已复制')); },
+    loadScene(){ navigator.clipboard.readText().then(t=>{ try{this.saveState(); physics.entities=JSON.parse(t); this.toast('已加载'); this.running=false; this.toggleRun();}catch(e){this.toast('数据无效');} }); },
+    
+    updateCharts(){ 
+        let target = this.selected;
+        if (!target || target.static) {
+            target = physics.entities.find(e => !e.static && (e.type === 'ball' || e.type === 'block'));
+        }
+        if(!target) return;
+        if(this.renderTrace) {
+            this.tracePoints.push({x: target.pos.x, y: target.pos.y});
+            if(this.tracePoints.length > 500) this.tracePoints.shift();
+        }
+        const v = Vec.mag(target.vel) / CFG.scale;
+        const h = Math.max(0, (this.groundY - (target.r||target.h/2) - target.pos.y) / CFG.scale);
+        const Ek = 0.5 * target.mass * v * v;
+        const Ep = target.mass * CFG.g * h;
+        velChart.data.labels.push(''); velChart.data.datasets[0].data.push(v);
+        energyChart.data.labels.push(''); energyChart.data.datasets[0].data.push(Ek+Ep); energyChart.data.datasets[1].data.push(Ek); energyChart.data.datasets[2].data.push(Ep);
+        if(velChart.data.labels.length > 300) { 
+            velChart.data.labels.shift(); velChart.data.datasets[0].data.shift();
+            energyChart.data.labels.shift(); energyChart.data.datasets.forEach(d => d.data.shift());
+        }
+        velChart.update('none'); energyChart.update('none');
+    }
+};
+
+const chartCommon = {
+    responsive: true, maintainAspectRatio: false, 
+    plugins: { legend: { display: true, labels:{color:'#aaa', boxWidth:10, font:{size:10}} } }, 
+    scales: { x:{display:false}, y:{grid:{color:'#333'}, ticks:{color:'#888', font:{size:10}}} }, 
+    animation: false 
+};
+
+const velChart = new Chart(document.getElementById('velChartCanvas'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: '速度 v (m/s)', data: [], borderColor: '#00bfff', borderWidth: 1.5, pointRadius: 0, tension: 0.1 }] },
+    options: chartCommon
+});
+const energyChart = new Chart(document.getElementById('energyChartCanvas'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: '机械能 E', data: [], borderColor: '#00e5ff', borderWidth: 2, pointRadius: 0, tension: 0.1 }, { label: '动能 Ek', data: [], borderColor: '#ffd600', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { label: '势能 Ep', data: [], borderColor: '#e040fb', borderWidth: 1, pointRadius: 0, tension: 0.1 }] },
+    options: chartCommon
+});
+
+app.init();
+</script>
+</body>
+</html>

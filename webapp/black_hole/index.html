@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>黑洞引力透镜仿真 (全屏版)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-family: sans-serif; pointer-events: none;
+        }
+        #watermark {
+            position: absolute; bottom: 20px; right: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-family: sans-serif;
+            font-size: 14px;
+            text-align: right;
+            line-height: 1.5;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loading">正在初始化物理引擎...</div>
+    <canvas id="webgl"></canvas>
+    <div id="watermark">南阳一中 张铭戈 公众号 戈悟志理 琢瑷成器</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import GUI from 'three/addons/libs/lil-gui.module.min.js';
+
+        // ==========================================
+        // 1. 修改后的顶点着色器 (关键修改！)
+        // ==========================================
+        // 这里去掉了 projectionMatrix * modelViewMatrix
+        // 强制把画板的四个角直接对齐到屏幕的四个角
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                // 直接输出 position，忽略 3D 空间的透视变换
+                // 这样几何体就会像一张贴纸一样永远覆盖全屏
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        // ==========================================
+        // 2. 片元着色器 (保持不变)
+        // ==========================================
+        const fragmentShader = `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform vec3 uCameraPos;
+            uniform vec3 uCameraDir;
+            uniform float uMass;
+            uniform float uDiskIntensity;
+            uniform float uDiskInner;
+            uniform float uDiskOuter;
+
+            varying vec2 vUv;
+
+            // --- 噪声与数学工具 ---
+            mat2 rot2D(float angle) {
+                float s = sin(angle);
+                float c = cos(angle);
+                return mat2(c, -s, s, c);
+            }
+
+            float hash(vec3 p) {
+                p = fract(p * 0.3183099 + .1);
+                p *= 17.0;
+                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+            }
+
+            float noise(in vec3 x) {
+                vec3 i = floor(x);
+                vec3 f = fract(x);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                            mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                        mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                            mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+            }
+
+            float fbm(vec3 p) {
+                float f = 0.0;
+                float scale = 0.5;
+                for (int i = 0; i < 5; i++) {
+                    f += scale * noise(p);
+                    p *= 2.0;
+                    scale *= 0.5;
+                }
+                return f;
+            }
+
+            void main() {
+                // 屏幕坐标修正
+                vec2 uv = vUv * 2.0 - 1.0;
+                uv.x *= uResolution.x / uResolution.y;
+
+                // 构建虚拟相机坐标系
+                vec3 ro = uCameraPos;
+                vec3 forward = normalize(uCameraDir);
+                vec3 right = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
+                vec3 up = cross(right, forward);
+                vec3 rd = normalize(forward * 1.5 + right * uv.x + up * uv.y);
+
+                vec3 color = vec3(0.0);
+                vec3 p = ro;
+                float t = 0.0;
+                bool hitHorizon = false;
+
+                // --- 物理步进循环 ---
+                for(int i = 0; i < 90; i++) {
+                    float distToCenter = length(p);
+                    
+                    // 事件视界
+                    if(distToCenter < (2.0 * uMass * 0.9)) {
+                        hitHorizon = true;
+                        break;
+                    }
+
+                    // 引力弯曲
+                    vec3 gravityForce = -normalize(p) * (uMass / (distToCenter * distToCenter + 0.001)) * 0.12;
+                    rd += gravityForce;
+                    rd = normalize(rd);
+
+                    // 吸积盘渲染
+                    float diskHeight = 0.35;
+                    if(abs(p.y) < diskHeight) {
+                        float r = length(p.xz);
+                        if(r > uDiskInner && r < uDiskOuter) {
+                            vec3 rotP = p;
+                            rotP.xz *= rot2D(uTime * 0.8 + 9.0/r);
+                            
+                            float density = fbm(rotP * 2.5);
+                            float fade = smoothstep(uDiskInner, uDiskInner+0.5, r) * smoothstep(uDiskOuter, uDiskOuter-1.5, r);
+                            float vFade = 1.0 - abs(p.y)/diskHeight;
+                            float doppler = 1.0 + dot(normalize(p.xz), right.xz) * 0.6;
+                            
+                            vec3 diskColor = mix(vec3(1.0, 0.25, 0.05), vec3(1.0, 0.9, 0.8), density);
+                            color += diskColor * density * fade * vFade * 0.15 * doppler * uDiskIntensity;
+                        }
+                    }
+
+                    // 步长控制
+                    float stepSize = max(0.05, distToCenter * 0.07);
+                    p += rd * stepSize;
+                    t += stepSize;
+                    
+                    if(t > 50.0) break;
+                }
+
+                // 星空背景
+                if(!hitHorizon) {
+                    float stars = pow(fbm(rd * 45.0), 14.0);
+                    color += vec3(stars);
+                }
+
+                gl_FragColor = vec4(pow(color, vec3(0.4545)), 1.0);
+            }
+        `;
+
+        // ==========================================
+        // 3. JavaScript 逻辑
+        // ==========================================
+
+        const canvas = document.querySelector('#webgl');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const scene = new THREE.Scene();
+
+        // 这个相机现在只负责计算位置，不负责投影
+        // 我把位置稍微调近了一点，这样黑洞看起来更大
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.5, 6); 
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // 依然创建一个平面，但是 Shader 会强行把它拉伸到全屏
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        
+        const uniforms = {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            uCameraPos: { value: new THREE.Vector3() },
+            uCameraDir: { value: new THREE.Vector3() },
+            uMass: { value: 1.5 },
+            uDiskIntensity: { value: 2.5 },
+            uDiskInner: { value: 3.0 },
+            uDiskOuter: { value: 8.5 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            vertexShader,
+            fragmentShader,
+            uniforms,
+            depthWrite: false,
+            depthTest: false
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        // 重要：确保渲染顺序
+        mesh.frustumCulled = false; 
+        scene.add(mesh);
+
+        // GUI
+        const gui = new GUI({ title: '控制台' });
+        gui.add(uniforms.uMass, 'value', 0.1, 4.0).name('黑洞质量');
+        gui.add(uniforms.uDiskIntensity, 'value', 0.0, 5.0).name('吸积盘亮度');
+        gui.add(controls, 'autoRotate').name('自动旋转相机');
+
+        document.getElementById('loading').style.display = 'none';
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            const time = clock.getElapsedTime();
+            uniforms.uTime.value = time;
+
+            // 更新相机
+            uniforms.uCameraPos.value.copy(camera.position);
+            const direction = new THREE.Vector3(0, 0, -1);
+            direction.applyQuaternion(camera.quaternion);
+            uniforms.uCameraDir.value.copy(direction);
+
+            controls.update();
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+    </script>
+</body>
+</html>

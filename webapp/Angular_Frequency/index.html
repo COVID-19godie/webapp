@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简谐运动原理全景演示 - 戈悟志理</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            /* 稍微加宽一点以容纳三个部分 */
+            max-width: 95%;
+            width: 950px; 
+        }
+        canvas {
+            border: 1px solid #ddd;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            background: #fafafa;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        label {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1em;
+        }
+        input[type=range] {
+            cursor: pointer;
+            width: 200px;
+        }
+        .value-display {
+            font-family: 'Consolas', monospace;
+            color: #d32f2f;
+            font-weight: bold;
+            font-size: 1.2em;
+            min-width: 100px;
+            text-align: left;
+        }
+        .formula-box {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #e3f2fd;
+            border-left: 5px solid #2196F3;
+            border-radius: 4px;
+            color: #455a64;
+            font-size: 1.1em;
+            text-align: left;
+            padding-left: 20px;
+        }
+    </style>
+    
+    <script src="https://cdn.bootcdn.net/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js" async></script>
+    <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+    };
+    </script>
+</head>
+<body>
+
+<div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h2 style="margin:0;">圆频率、振子与图像的关系</h2>
+        <div style="font-size:0.9em; color:#666;">公众号：戈悟志理</div>
+    </div>
+    
+    <div class="formula-box">
+        $\omega = \frac{2\pi}{T}$ (圆频率决定振动快慢) &nbsp;&nbsp;|&nbsp;&nbsp; $x = A\sin(\omega t)$ (位移公式)
+    </div>
+    
+    <canvas id="simCanvas" width="900" height="400"></canvas>
+
+    <div class="controls">
+        <label for="omegaSlider">圆频率 $\omega$:</label>
+        <input type="range" id="omegaSlider" min="0.5" max="5.0" step="0.1" value="2.0">
+        <span class="value-display" id="omegaValue">2.0 rad/s</span>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('omegaSlider');
+    const valueDisplay = document.getElementById('omegaValue');
+
+    // === 布局参数 ===
+    const centerY = 220;   // 全局垂直中心 (平衡位置)
+    const amplitude = 100; // 振幅
+    
+    // 三个区域的X中心
+    const circleX = 150;   // 左：参考圆
+    const oscX = 400;      // 中：弹簧振子
+    const graphStartX = 550; // 右：图像起点
+
+    // === 物理参数 ===
+    let omega = 2.0; 
+    let time = 0;
+    const timeStep = 0.016; 
+    let wavePath = [];
+
+    const watermarkText = "南阳一中 张铭戈 公众号 戈悟志理 琢瑷成器"; 
+
+    slider.addEventListener('input', (e) => {
+        omega = parseFloat(e.target.value);
+        valueDisplay.textContent = omega.toFixed(1) + " rad/s";
+    });
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 0. 绘制基础静态元素 (坐标轴、天花板等)
+        drawStaticElements();
+
+        // 核心计算
+        let theta = omega * time;
+        // 逆时针旋转
+        let px = circleX + amplitude * Math.cos(-theta); 
+        let py = centerY + amplitude * Math.sin(-theta);
+        
+        // 计算位移 (用于显示和物理逻辑)
+        let displacement = Math.round(centerY - py);
+
+        // ==========================
+        // 1. 左侧：参考圆区域
+        // ==========================
+        ctx.beginPath();
+        ctx.arc(circleX, centerY, amplitude, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ccc';
+        ctx.setLineDash([5, 5]); 
+        ctx.stroke();
+        ctx.setLineDash([]); 
+
+        // 旋转半径
+        ctx.beginPath();
+        ctx.moveTo(circleX, centerY);
+        ctx.lineTo(px, py);
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 圆上质点
+        drawPoint(px, py, '#d32f2f');
+
+        // ==========================
+        // 2. 中间：弹簧振子区域
+        // ==========================
+        // 绘制弹簧 (从天花板 oscX, 20 到 振子顶部 oscX, py-20)
+        // 假设振块高40px，py是中心，所以连接到 py-20
+        drawSpring(oscX, 40, py - 20, 12, 30); // x, yStart, yEnd, turns, width
+
+        // 绘制振子 (滑块)
+        ctx.fillStyle = '#1976D2'; // 深蓝
+        ctx.fillRect(oscX - 25, py - 20, 50, 40); // 宽50 高40
+        
+        // 振子上的中心点
+        drawPoint(oscX, py, '#fff', 3);
+
+        // ==========================
+        // 3. 右侧：波形图区域
+        // ==========================
+        wavePath.unshift({ y: py }); 
+        if (wavePath.length > 330) { wavePath.pop(); }
+
+        ctx.beginPath();
+        ctx.moveTo(graphStartX, wavePath[0].y);
+        for (let i = 1; i < wavePath.length; i++) {
+            ctx.lineTo(graphStartX + i * 1, wavePath[i].y);
+        }
+        ctx.strokeStyle = '#2196F3'; 
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // 波形上的点
+        drawPoint(graphStartX, py, '#2196F3');
+        
+        // 数值显示
+        ctx.font = "bold 14px Consolas";
+        ctx.fillStyle = "#d32f2f";
+        ctx.fillText("x=" + displacement, graphStartX + 15, py - 10);
+
+        // ==========================
+        // 4. 关联线 (核心逻辑体现)
+        // ==========================
+        // 一条红虚线贯穿 左点 -> 中块 -> 右点
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(graphStartX, py);
+        ctx.strokeStyle = '#e53935';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]); 
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+
+        // 绘制文字说明
+        drawLabels();
+
+        // 绘制水印
+        drawWatermark();
+
+        time += timeStep;
+        requestAnimationFrame(draw);
+    }
+
+    // --- 辅助绘图函数 ---
+
+    function drawStaticElements() {
+        // 平衡位置参考线 (灰色细线)
+        ctx.beginPath();
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(canvas.width, centerY);
+        ctx.strokeStyle = '#f0f0f0';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // 弹簧的天花板
+        ctx.beginPath();
+        ctx.moveTo(oscX - 40, 40);
+        ctx.lineTo(oscX + 40, 40);
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#333';
+        ctx.stroke();
+        
+        // 图像坐标轴
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1.5;
+        // y轴
+        ctx.beginPath();
+        ctx.moveTo(graphStartX, centerY - amplitude - 30);
+        ctx.lineTo(graphStartX, centerY + amplitude + 30);
+        ctx.stroke();
+        // t轴箭头
+        ctx.beginPath();
+        ctx.moveTo(canvas.width - 20, centerY - 5);
+        ctx.lineTo(canvas.width - 10, centerY);
+        ctx.lineTo(canvas.width - 20, centerY + 5);
+        ctx.stroke();
+
+        // 坐标轴文字
+        ctx.fillStyle = '#333';
+        ctx.font = "14px Arial";
+        ctx.fillText("+A", graphStartX - 25, centerY - amplitude + 5);
+        ctx.fillText("-A", graphStartX - 25, centerY + amplitude + 5);
+        ctx.fillText("t", canvas.width - 20, centerY + 25);
+    }
+
+    // 绘制弹簧 (Zigzag线)
+    function drawSpring(x, yStart, yEnd, turns, width) {
+        ctx.beginPath();
+        ctx.moveTo(x, yStart);
+        
+        let len = yEnd - yStart;
+        let step = len / (turns * 2); // 每一折的垂直高度
+        
+        for (let i = 1; i <= turns * 2; i++) {
+            // x坐标在 x-width/2 和 x+width/2 之间跳变
+            let currX = (i % 2 === 1) ? x + width/2 : x - width/2;
+            let currY = yStart + i * step;
+            // 最后一折回到中心
+            if (i === turns * 2) currX = x;
+            ctx.lineTo(currX, currY);
+        }
+        
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+    }
+
+    function drawPoint(x, y, color, r=6) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+    }
+
+    function drawLabels() {
+        ctx.font = "16px Microsoft YaHei";
+        ctx.fillStyle = "#444";
+        ctx.textAlign = "center";
+        
+        ctx.fillText("参考圆 (原理)", circleX, 360);
+        ctx.fillText("弹簧振子 (现象)", oscX, 360);
+        ctx.fillText("图像 (记录)", graphStartX + 100, 360);
+    }
+
+    function drawWatermark() {
+        ctx.save();
+        ctx.font = "bold 18px 'Microsoft YaHei', Arial"; 
+        ctx.fillStyle = "rgba(100, 100, 100, 0.15)";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(watermarkText, canvas.width - 15, canvas.height - 10);
+        ctx.restore();
+    }
+
+    draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高精度平滑曲线实验室 - 戈悟志理琢瑷成器</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: #151b2b;
+            --input-bg: #202a40;
+            --text-main: #e2e8f0;
+            --text-sub: #94a3b8;
+            --accent: #3b82f6;
+            --border: #334155;
+            --chart-grid: #334155;
+        }
+
+        * { box-sizing: border-box; user-select: none; }
+        
+        body {
+            font-family: 'Segoe UI', -apple-system, monospace;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #watermark {
+            position: absolute;
+            bottom: 12px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.1);
+            font-size: 0.9rem;
+            font-weight: 700;
+            pointer-events: none;
+            z-index: 1000;
+            font-family: serif;
+        }
+
+        /* 布局 */
+        #sidebar {
+            width: 320px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 20;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+        }
+
+        .header {
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .scroll-content { flex: 1; overflow-y: auto; padding: 10px; }
+
+        .group {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        
+        .group-header {
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.05);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+        }
+        .group-header:hover { background: rgba(255,255,255,0.08); }
+        
+        .group-body { padding: 10px; display: block; }
+        .group-body.collapsed { display: none; }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+        }
+        .row label { color: var(--text-sub); }
+
+        input[type="number"], select {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 4px;
+            border-radius: 4px;
+            width: 90px;
+            text-align: right;
+            font-family: 'Consolas', monospace;
+        }
+        input:focus { border-color: var(--accent); outline: none; }
+
+        .btn-row {
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            border-top: 1px solid var(--border);
+            background: var(--panel-bg);
+        }
+        
+        button {
+            border: none; padding: 10px; border-radius: 6px;
+            color: white; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .btn-go { background: #10b981; }
+        .btn-pause { background: #f59e0b; color: #000; }
+        .btn-rst { background: #ef4444; }
+        button:hover { filter: brightness(1.1); }
+
+        /* 主视图 */
+        #main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: #0f1218;
+        }
+
+        #hud {
+            position: absolute; top: 15px; left: 15px;
+            background: rgba(21, 27, 43, 0.9);
+            padding: 10px 15px;
+            border-radius: 6px;
+            border-left: 3px solid var(--accent);
+            display: grid; grid-template-columns: auto auto; gap: 4px 20px;
+            font-family: 'Consolas', monospace; font-size: 0.85rem;
+            pointer-events: none; z-index: 10;
+        }
+        .hud-v { color: var(--accent); font-weight: bold; }
+        
+        .status-badge {
+            padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8em;
+        }
+        .s-static { background: #475569; color: #fff; }
+        .s-move { background: #f59e0b; color: #000; }
+        .s-drop { background: #ef4444; color: #fff; }
+
+        /* 物理画布 */
+        #sim-view { flex: 5; position: relative; overflow: hidden; cursor: crosshair; }
+        
+        .drag-tip {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 20px;
+            font-size: 0.8rem; color: #aaa; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .can-interact .drag-tip { opacity: 1; }
+
+        /* 图表区 */
+        #chart-view {
+            flex: 5;
+            display: flex;
+            background: #0b0e14;
+            border-top: 1px solid var(--border);
+            padding: 5px;
+            gap: 5px;
+        }
+        
+        .chart-container {
+            flex: 1;
+            position: relative;
+            background: rgba(255,255,255,0.02);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+
+    </style>
+</head>
+<body>
+    <div id="watermark">南阳一中 张铭戈 公众号:戈悟志理琢瑷成器</div>
+
+    <div id="sidebar">
+        <div class="header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3,3H21V21H3V3M5,5V19H19V5H5Z"/></svg>
+            板块模型 (Smooth Chart)
+        </div>
+
+        <div class="scroll-content">
+            <div class="group">
+                <div class="group-header" onclick="toggle(this)">初始状态 ▾</div>
+                <div class="group-body">
+                    <div class="row">
+                        <label>初始相对位移 (m)</label>
+                        <input type="number" id="init_rel" value="0.0" step="0.1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="group">
+                <div class="group-header" onclick="toggle(this)">受力 (N) ▾</div>
+                <div class="group-body">
+                    <div class="row">
+                        <label style="color:#60a5fa">滑块力 Fm</label>
+                        <input type="number" id="Fm" value="0">
+                    </div>
+                    <div class="row">
+                        <label style="color:#a1887f">木板力 FM</label>
+                        <input type="number" id="FM" value="8">
+                    </div>
+                </div>
+            </div>
+
+            <div class="group">
+                <div class="group-header" onclick="toggle(this)">物理参数 ▾</div>
+                <div class="group-body">
+                    <div class="row"><label>m (kg)</label><input type="number" id="m" value="1.0"></div>
+                    <div class="row"><label>M (kg)</label><input type="number" id="M" value="2.0"></div>
+                    <div class="row"><label>L (m)</label><input type="number" id="L" value="4.0"></div>
+                    <div class="row"><label>μ1 (块-板)</label><input type="number" id="mu1" value="0.3"></div>
+                    <div class="row"><label>μ2 (板-地)</label><input type="number" id="mu2" value="0.1"></div>
+                </div>
+            </div>
+            
+            <div class="group">
+                <div class="group-header" onclick="toggle(this)">视图 ▾</div>
+                <div class="group-body">
+                    <div class="row">
+                        <label>参考系</label>
+                        <select id="ref_sys">
+                            <option value="ground">地面</option>
+                            <option value="plate">木板</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn-go" id="btn-start">开始</button>
+            <button class="btn-pause" id="btn-pause">暂停</button>
+            <button class="btn-rst" id="btn-reset">复位</button>
+        </div>
+    </div>
+
+    <div id="main-area">
+        <div id="hud">
+            <div>State: <span id="st-badge" class="status-badge s-static">READY</span></div>
+            <div>Time: <span id="st-t">0.00</span>s</div>
+            <div>v_m: <span id="st-vm" class="hud-v">0.00</span></div>
+            <div>v_M: <span id="st-vM" class="hud-v">0.00</span></div>
+            <div>a_m: <span id="st-am">0.00</span></div>
+            <div>a_M: <span id="st-aM">0.00</span></div>
+        </div>
+
+        <div id="sim-view" class="can-interact">
+            <div class="drag-tip">暂停时拖动滑块调整位置</div>
+            <canvas id="cvs-sim"></canvas>
+        </div>
+
+        <div id="chart-view">
+            <div class="chart-container">
+                <canvas id="cvs-vt"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="cvs-xt"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggle(el) {
+            const body = el.nextElementSibling;
+            body.classList.toggle('collapsed');
+            el.innerHTML = body.classList.contains('collapsed') 
+                ? el.innerText.replace('▾', '▸') : el.innerText.replace('▸', '▾');
+        }
+
+        // --- 物理内核 (RK4 + 解耦) ---
+        const Phys = {
+            p: { m:1, M:2, L:4, mu1:0.3, mu2:0.1, Fm:0, FM:8, g:9.8 },
+            s: { xm:0, vm:0, xM:0, vM:0, ym:0, vym:0 }, // State
+            t: 0,
+            status: 'static', // static, sliding, detached, grounded
+            lastAcc: { am:0, aM:0 },
+
+            // 导数函数
+            deriv(st) {
+                const {m, M, L, mu1, mu2, Fm, FM, g} = this.p;
+                let am=0, aM=0, avy=0;
+
+                // 掉落判断 (注意：这里只判断力，状态切换在update里)
+                const isDetached = (Math.abs(st.xm - st.xM) > L/2) || (this.status === 'detached');
+                
+                if (isDetached && this.status !== 'grounded') {
+                    // 脱离模式
+                    am = 0; avy = -g * 3; // 快速掉落视觉
+                    const f2_max = mu2 * M * g;
+                    let f2 = 0;
+                    if(Math.abs(st.vM) > 1e-5) f2 = -Math.sign(st.vM) * f2_max;
+                    else {
+                        if(Math.abs(FM) <= f2_max) { f2 = -FM; aM = 0; }
+                        else f2 = -Math.sign(FM) * f2_max;
+                    }
+                    if(Math.abs(st.vM) > 1e-5 || Math.abs(FM) > f2_max) aM = (FM + f2) / M;
+
+                } else if (this.status !== 'grounded') {
+                    // 板块模式
+                    avy = 0;
+                    const f1_max = mu1 * m * g;
+                    const f2_max = mu2 * (m + M) * g;
+                    
+                    // 假设相对静止
+                    let a_sys = 0, f2_sys = 0;
+                    const F_tot = Fm + FM;
+                    
+                    if(Math.abs(st.vM) > 1e-5) f2_sys = -Math.sign(st.vM) * f2_max;
+                    else {
+                        if(Math.abs(F_tot) <= f2_max) { f2_sys = -F_tot; a_sys = 0; }
+                        else f2_sys = -Math.sign(F_tot) * f2_max;
+                    }
+                    if(Math.abs(st.vM) > 1e-5 || Math.abs(F_tot) > f2_max) a_sys = (F_tot + f2_sys)/(m+M);
+
+                    const f1_req = m * a_sys - Fm;
+                    let sliding = false;
+                    
+                    if(Math.abs(st.vm - st.vM) > 1e-4) sliding = true;
+                    else if(Math.abs(f1_req) > f1_max + 1e-4) sliding = true;
+
+                    if(!sliding) {
+                        am = a_sys; aM = a_sys;
+                    } else {
+                        let dir = 0;
+                        if(Math.abs(st.vm - st.vM) > 1e-4) dir = -Math.sign(st.vm - st.vM);
+                        else dir = Math.sign(f1_req);
+                        
+                        const f1 = dir * f1_max;
+                        am = (Fm + f1) / m;
+                        
+                        const F_dr_M = FM - f1;
+                        let f2 = 0;
+                        if(Math.abs(st.vM) > 1e-5) f2 = -Math.sign(st.vM) * f2_max;
+                        else {
+                            if(Math.abs(F_dr_M) <= f2_max) { f2 = -F_dr_M; aM = 0; }
+                            else f2 = -Math.sign(F_dr_M) * f2_max;
+                        }
+                        if(Math.abs(st.vM) > 1e-5 || Math.abs(F_dr_M) > f2_max) aM = (F_dr_M + f2) / M;
+                    }
+                }
+                return { dxm: st.vm, dvm: am, dxM: st.vM, dvM: aM, dym: st.vym, dvym: avy };
+            },
+
+            step(dt) {
+                if(this.status === 'grounded') return;
+
+                // RK4
+                const k1 = this.deriv(this.s);
+                const add = (s, k, f) => ({
+                    xm: s.xm + k.dxm*f, vm: s.vm + k.dvm*f,
+                    xM: s.xM + k.dxM*f, vM: s.vM + k.dvM*f,
+                    ym: s.ym + k.dym*f, vym: s.vym + k.dvym*f
+                });
+                const k2 = this.deriv(add(this.s, k1, dt*0.5));
+                const k3 = this.deriv(add(this.s, k2, dt*0.5));
+                const k4 = this.deriv(add(this.s, k3, dt));
+
+                this.s.xm += (k1.dxm + 2*k2.dxm + 2*k3.dxm + k4.dxm)*dt/6;
+                this.s.vm += (k1.dvm + 2*k2.dvm + 2*k3.dvm + k4.dvm)*dt/6;
+                this.s.xM += (k1.dxM + 2*k2.dxM + 2*k3.dxM + k4.dxM)*dt/6;
+                this.s.vM += (k1.dvM + 2*k2.dvM + 2*k3.dvM + k4.dvM)*dt/6;
+                this.s.ym += (k1.dym + 2*k2.dym + 2*k3.dym + k4.dym)*dt/6;
+                this.s.vym+= (k1.dvym + 2*k2.dvym+ 2*k3.dvym+ k4.dvym)*dt/6;
+                
+                this.t += dt;
+                this.lastAcc = { am: k2.dvm, aM: k2.dvM }; // 近似取中间时刻加速度
+
+                // 状态机
+                if(this.status === 'detached') {
+                    if(this.s.ym < -0.5) {
+                        this.status = 'grounded';
+                        this.s.ym = -0.5; this.s.vm = 0; this.s.vym = 0;
+                    }
+                } else {
+                    if(Math.abs(this.s.xm - this.s.xM) > this.p.L/2) this.status = 'detached';
+                    else if(Math.abs(this.s.vm - this.s.vM) > 1e-3) this.status = 'sliding';
+                    else {
+                        this.status = 'static';
+                        const avg = (this.s.vm + this.s.vM)/2;
+                        this.s.vm = avg; this.s.vM = avg; // 锁死
+                    }
+                }
+            }
+        };
+
+        // --- 应用逻辑 ---
+        const App = {
+            running: false,
+            // 滚动高频数据 Buffer
+            data: { t:[], vm:[], vM:[], dx:[] },
+            maxPoints: 3000, // 足够长，保证平滑
+
+            init() {
+                this.bindInputs();
+                this.reset();
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.loop();
+            },
+
+            bindInputs() {
+                const link = (id, target, key) => {
+                    const el = document.getElementById(id);
+                    el.addEventListener('change', () => {
+                        target[key] = parseFloat(el.value);
+                        if(!this.running) this.drawSim();
+                    });
+                };
+                link('Fm', Phys.p, 'Fm'); link('FM', Phys.p, 'FM');
+                link('m', Phys.p, 'm'); link('M', Phys.p, 'M');
+                link('L', Phys.p, 'L'); link('mu1', Phys.p, 'mu1'); link('mu2', Phys.p, 'mu2');
+
+                document.getElementById('init_rel').addEventListener('input', e => {
+                    if(this.running) return;
+                    this.reset(parseFloat(e.target.value));
+                });
+
+                document.getElementById('btn-start').onclick = () => {
+                    if(Phys.status === 'grounded') this.reset(parseFloat(document.getElementById('init_rel').value));
+                    this.running = true;
+                };
+                document.getElementById('btn-pause').onclick = () => this.running = false;
+                document.getElementById('btn-reset').onclick = () => this.reset(parseFloat(document.getElementById('init_rel').value));
+                
+                // 拖拽
+                this.setupDrag();
+            },
+
+            reset(rel = 0) {
+                this.running = false;
+                Phys.t = 0;
+                Phys.s = { xm: rel, vm:0, xM:0, vM:0, ym:0, vym:0 };
+                Phys.status = 'static';
+                Phys.lastAcc = {am:0, aM:0};
+                this.data = { t:[], vm:[], vM:[], dx:[] };
+                document.getElementById('init_rel').value = rel.toFixed(1);
+                this.updateHUD();
+                this.drawSim();
+                this.drawCharts();
+            },
+
+            resize() {
+                ['cvs-sim', 'cvs-vt', 'cvs-xt'].forEach(id => {
+                    const c = document.getElementById(id);
+                    c.width = c.clientWidth * window.devicePixelRatio;
+                    c.height = c.clientHeight * window.devicePixelRatio;
+                });
+                if(!this.running) { this.drawSim(); this.drawCharts(); }
+            },
+
+            loop() {
+                requestAnimationFrame(() => this.loop());
+                
+                if(this.running) {
+                    // 每一帧都记录数据，拒绝折线
+                    const dt = 1/60; 
+                    Phys.step(dt);
+                    
+                    // Push data
+                    const d = this.data;
+                    d.t.push(Phys.t);
+                    d.vm.push(Phys.s.vm);
+                    d.vM.push(Phys.s.vM);
+                    d.dx.push(Phys.s.xm - Phys.s.xM);
+
+                    // 滚动窗口
+                    if(d.t.length > this.maxPoints) {
+                        d.t.shift(); d.vm.shift(); d.vM.shift(); d.dx.shift();
+                    }
+                    
+                    this.updateHUD();
+                }
+
+                // 渲染频率与刷新率一致
+                this.drawSim();
+                this.drawCharts(); // 每一帧都重绘图表以保证平滑缩放
+            },
+
+            updateHUD() {
+                const s = Phys.s;
+                document.getElementById('st-t').innerText = Phys.t.toFixed(2);
+                document.getElementById('st-vm').innerText = s.vm.toFixed(2);
+                document.getElementById('st-vM').innerText = s.vM.toFixed(2);
+                document.getElementById('st-am').innerText = Phys.lastAcc.am.toFixed(2);
+                document.getElementById('st-aM').innerText = Phys.lastAcc.aM.toFixed(2);
+                
+                const b = document.getElementById('st-badge');
+                if(Phys.status==='static') { b.className='status-badge s-static'; b.innerText='相对静止'; }
+                else if(Phys.status==='sliding') { b.className='status-badge s-move'; b.innerText='相对滑动'; }
+                else if(Phys.status==='detached') { b.className='status-badge s-drop'; b.innerText='掉落中'; }
+                else { b.className='status-badge s-static'; b.innerText='已落地'; }
+            },
+
+            // --- 智能图表引擎 ---
+            drawCharts() {
+                const d = this.data;
+                if(d.t.length < 2) return;
+                
+                // 1. V-t 图
+                this.renderChart('cvs-vt', '速度 v (m/s)', d.t, [
+                    { data: d.vm, color: '#3b82f6', label: '滑块' },
+                    { data: d.vM, color: '#a1887f', label: '木板' }
+                ]);
+
+                // 2. X-t 图 (相对)
+                this.renderChart('cvs-xt', '相对位移 Δx (m)', d.t, [
+                    { data: d.dx, color: '#f59e0b', label: '位移差' }
+                ]);
+            },
+
+            renderChart(id, title, tData, datasets) {
+                const cvs = document.getElementById(id);
+                const ctx = cvs.getContext('2d');
+                const W = cvs.width, H = cvs.height;
+                const pad = { t: 30, b: 30, l: 40, r: 20 };
+
+                ctx.clearRect(0,0,W,H);
+                
+                // 1. 确定 Y 轴范围 (自动数量级)
+                let min = Infinity, max = -Infinity;
+                datasets.forEach(ds => {
+                    for(let v of ds.data) {
+                        if(v < min) min = v;
+                        if(v > max) max = v;
+                    }
+                });
+                
+                // 避免 flat line
+                if(max - min < 0.001) { max += 0.5; min -= 0.5; }
+                
+                // 增加 10% 边距，让曲线不顶格
+                const range = max - min;
+                min -= range * 0.1;
+                max += range * 0.1;
+
+                // 2. 计算合适的刻度间隔 (Magic Scale)
+                const roughStep = (max - min) / 5; // 目标大概5个刻度
+                const mag = Math.pow(10, Math.floor(Math.log10(roughStep))); // 数量级
+                let step = mag;
+                if (roughStep / mag > 5) step = 10 * mag;
+                else if (roughStep / mag > 2) step = 5 * mag;
+                else if (roughStep / mag > 1) step = 2 * mag;
+
+                // 修正 min/max 到刻度倍数
+                const yStart = Math.floor(min / step) * step;
+                const yEnd = Math.ceil(max / step) * step;
+                const yRange = yEnd - yStart;
+
+                // X轴范围
+                const tStart = tData[0];
+                const tEnd = tData[tData.length-1];
+                const tRange = tEnd - tStart || 1;
+
+                // 3. 绘制网格
+                ctx.font = '24px Consolas'; // High DPI font size
+                ctx.fillStyle = '#64748b';
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 2; // High DPI line
+
+                // Y轴网格
+                ctx.textAlign = 'right';
+                for(let yVal = yStart; yVal <= yEnd + step/10; yVal += step) {
+                    const yPos = H - pad.b - ((yVal - yStart) / yRange) * (H - pad.b - pad.t);
+                    if(yPos < pad.t) continue;
+                    
+                    // Line
+                    ctx.beginPath(); ctx.moveTo(pad.l, yPos); ctx.lineTo(W-pad.r, yPos); ctx.stroke();
+                    // Text
+                    ctx.fillText(parseFloat(yVal.toPrecision(4)), pad.l - 5, yPos + 8);
+                }
+
+                // X轴简单画一根底线
+                ctx.beginPath(); 
+                ctx.strokeStyle = '#475569';
+                ctx.moveTo(pad.l, H - pad.b); ctx.lineTo(W-pad.r, H - pad.b); ctx.stroke();
+
+                // 标题
+                ctx.fillStyle = '#94a3b8';
+                ctx.textAlign = 'left';
+                ctx.fillText(title, pad.l + 10, pad.t);
+
+                // 4. 绘制平滑曲线
+                ctx.lineWidth = 4; // High DPI curve
+                ctx.lineJoin = 'round';
+                
+                datasets.forEach(ds => {
+                    ctx.beginPath();
+                    ctx.strokeStyle = ds.color;
+                    
+                    for(let i=0; i<tData.length; i++) {
+                        const px = pad.l + ((tData[i] - tStart) / tRange) * (W - pad.l - pad.r);
+                        const py = H - pad.b - ((ds.data[i] - yStart) / yRange) * (H - pad.b - pad.t);
+                        
+                        if(i===0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.stroke();
+                });
+            },
+
+            // --- 物理视图 ---
+            drawSim() {
+                const cvs = document.getElementById('cvs-sim');
+                const ctx = cvs.getContext('2d');
+                const W = cvs.width, H = cvs.height;
+                const scale = 80 * window.devicePixelRatio; // Zoom level
+
+                ctx.clearRect(0,0,W,H);
+                
+                // 相机跟随
+                const ref = document.getElementById('ref_sys').value;
+                const camX = (ref==='plate') ? Phys.s.xM : 
+                             (ref==='ground' && this.running) ? Phys.s.xM : // 运行时跟随木板
+                             (ref==='ground' && !this.running) ? Phys.s.xM : 0; // 暂停时跟随木板
+
+                const cx = W/2;
+                const groundY = H * 0.7;
+
+                // 地面
+                ctx.beginPath(); ctx.strokeStyle = '#334155'; ctx.lineWidth = 4;
+                ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+
+                // 标尺
+                const iStart = Math.floor(camX - cx/scale) - 1;
+                const iEnd = Math.ceil(camX + cx/scale) + 1;
+                ctx.fillStyle = '#475569';
+                ctx.font = `${10*window.devicePixelRatio}px monospace`;
+                
+                for(let i=iStart; i<=iEnd; i++) {
+                    const sx = (i - camX)*scale + cx;
+                    ctx.fillRect(sx, groundY, 2, 10);
+                    if(ref==='ground' && i%2===0) ctx.fillText(i, sx-4, groundY+25); 
+                }
+
+                // 木板
+                const pW = Phys.p.L * scale;
+                const pH = 0.5 * scale;
+                const px = (Phys.s.xM - camX)*scale + cx - pW/2;
+                const py = groundY - pH;
+
+                ctx.fillStyle = '#3e2723';
+                ctx.fillRect(px, py, pW, pH);
+                ctx.strokeStyle = '#5d4037'; ctx.lineWidth=2;
+                ctx.strokeRect(px, py, pW, pH);
+                ctx.fillStyle='#aaa'; ctx.fillText('M', px+10, py+20);
+
+                // 滑块
+                const bW = 0.8 * scale;
+                const bH = 0.5 * scale;
+                const bx = (Phys.s.xm - camX)*scale + cx - bW/2;
+                const by = py - bH - Phys.s.ym*scale;
+
+                ctx.fillStyle = (this.dragState) ? '#60a5fa' : '#3b82f6';
+                if(Phys.status==='grounded') ctx.fillStyle = '#ef4444';
+                
+                ctx.shadowColor = 'black'; ctx.shadowBlur = 10;
+                ctx.fillRect(bx, by, bW, bH);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle='white'; ctx.fillText('m', bx+bW/2-5, by+bH/2+5);
+
+                // 力箭头
+                const drawArrow = (x, y, v, c) => {
+                    if(Math.abs(v)<0.1) return;
+                    const len = v * 5 * window.devicePixelRatio;
+                    const dir = Math.sign(v);
+                    const ex = x + len;
+                    ctx.strokeStyle=c; ctx.lineWidth=4;
+                    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ex,y); ctx.stroke();
+                    ctx.fillStyle=c; ctx.beginPath(); ctx.moveTo(ex,y); 
+                    ctx.lineTo(ex-8*dir, y-6); ctx.lineTo(ex-8*dir, y+6); ctx.fill();
+                };
+
+                if(Phys.status !== 'detached' && Phys.status !== 'grounded')
+                    drawArrow(bx+bW/2, by+bH/2, Phys.p.Fm, '#f59e0b');
+                drawArrow(px+pW/2, py+pH/2, Phys.p.FM, '#10b981');
+            },
+
+            // --- 拖拽交互 ---
+            setupDrag() {
+                const cvs = document.getElementById('cvs-sim');
+                
+                cvs.addEventListener('mousedown', e => {
+                    if(this.running) return;
+                    const rect = cvs.getBoundingClientRect();
+                    const scale = 80 * window.devicePixelRatio;
+                    const x = (e.clientX - rect.left) * window.devicePixelRatio;
+                    const y = (e.clientY - rect.top) * window.devicePixelRatio;
+
+                    // 简单判定点击中心
+                    const cx = cvs.width/2;
+                    const bx = (Phys.s.xm - Phys.s.xM)*scale + cx;
+                    const groundY = cvs.height * 0.7;
+                    
+                    if(Math.abs(x - bx) < 50 && y < groundY) {
+                        this.dragState = { startMx: x, startRel: Phys.s.xm - Phys.s.xM };
+                        cvs.style.cursor = 'grabbing';
+                        this.drawSim();
+                    }
+                });
+
+                window.addEventListener('mousemove', e => {
+                    if(!this.dragState) return;
+                    const rect = cvs.getBoundingClientRect();
+                    const x = (e.clientX - rect.left) * window.devicePixelRatio;
+                    const scale = 80 * window.devicePixelRatio;
+                    
+                    let d = (x - this.dragState.startMx) / scale;
+                    let rel = this.dragState.startRel + d;
+                    
+                    // Limit
+                    if(rel > Phys.p.L/2) rel = Phys.p.L/2;
+                    if(rel < -Phys.p.L/2) rel = -Phys.p.L/2;
+
+                    Phys.s.xm = Phys.s.xM + rel;
+                    document.getElementById('init_rel').value = rel.toFixed(1);
+                    this.drawSim();
+                });
+
+                window.addEventListener('mouseup', () => {
+                    this.dragState = null;
+                    cvs.style.cursor = 'crosshair';
+                    this.drawSim();
+                });
+            }
+        };
+
+        App.init();
+    </script>
+</body>
+</html>

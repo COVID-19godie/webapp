@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Stellar Fluid Dynamics Lab V11.0</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; width: 320px; background: rgba(0, 10, 30, 0.9); 
+              border: 1px solid #00f3ff; padding: 20px; color: #00f3ff; border-radius: 8px; z-index: 100; }
+        .row { margin: 15px 0; }
+        input[type=range] { width: 100%; accent-color: #00f3ff; }
+        button { width: 100%; padding: 12px; background: #00f3ff; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        #status { font-size: 12px; color: #88aaff; margin-top: 15px; border-top: 1px solid #224466; padding-top: 10px; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+<div id="ui">
+    <h3 style="margin:0">流体动力学实验室</h3>
+    <div class="row">
+        <label>初始质量: <span id="mVal">25.0</span> M☉</label>
+        <input type="range" id="mSlider" min="0.1" max="120" step="0.5" value="25.0">
+    </div>
+    <div class="row">
+        <label>流体仿真速率: <span id="sVal">1.0</span>x</label>
+        <input type="range" id="sSlider" min="0.1" max="5" step="0.1" value="1.0">
+    </div>
+    <button id="viewBtn" style="background:transparent; color:#00f3ff; border:1px solid #00f3ff; margin-bottom:10px;">核心/表面 视角切换</button>
+    <button id="runBtn">启动演化物理仿真</button>
+    <div id="status">系统准备。5060 显存已分配。</div>
+</div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    let scene, camera, renderer, clock, controls, mainPlane;
+    let params = { mass: 25.0, speed: 1.0, isInside: 0.0, stage: 0.0, time: 0.0 };
+
+    // --- 巅峰着色器：流体 Raymarching ---
+    const FluidShader = {
+        uniforms: {
+            uTime: { value: 0 },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            uCameraPos: { value: new THREE.Vector3() },
+            uCameraDir: { value: new THREE.Vector3() },
+            uMass: { value: 25.0 },
+            uStage: { value: 0.0 }, // 0: Main, 1: Exploding/Remnant
+            uInside: { value: 0.0 }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+        `,
+        fragmentShader: `
+            uniform float uTime;
+            uniform vec2 uResolution;
+            uniform vec3 uCameraPos;
+            uniform vec3 uCameraDir;
+            uniform float uMass;
+            uniform float uStage;
+            uniform float uInside;
+            varying vec2 vUv;
+
+            // 3D 噪声：用于流体仿真
+            float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+            float noise(vec3 p) {
+                vec3 i = floor(p), f = fract(p);
+                f = f*f*(3.0-2.0*f);
+                return mix(mix(mix(hash(i+vec3(0,0,0)), hash(i+vec3(1,0,0)), f.x), mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+                           mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x), mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+            }
+
+            // 流场映射
+            float fbm(vec3 p) {
+                float v = 0.0, a = 0.5;
+                for(int i=0; i<5; i++) {
+                    v += a * noise(p);
+                    p *= 2.0; a *= 0.5;
+                }
+                return v;
+            }
+
+            void main() {
+                vec2 uv = (vUv - 0.5) * 2.0;
+                uv.x *= uResolution.x / uResolution.y;
+
+                vec3 ro = uCameraPos;
+                vec3 forward = normalize(uCameraDir);
+                vec3 right = normalize(cross(forward, vec3(0,1,0)));
+                vec3 up = cross(right, forward);
+                vec3 rd = normalize(forward * 1.5 + right * uv.x + up * uv.y);
+
+                vec3 finalCol = vec3(0.0);
+                float t = 0.0;
+
+                // 物理步进
+                for(int i=0; i<128; i++) {
+                    vec3 p = ro + rd * t;
+                    float dist = length(p);
+
+                    if(uStage < 0.5) { // 恒星稳定期
+                        float R = (uInside > 0.5) ? 4.0 : 4.2;
+                        if(dist < R) {
+                            // 流体力学水波纹：多级噪声叠加
+                            float ripples = noise(p * 2.0 + uTime * 0.5) * 0.5 + noise(p * 5.0 - uTime) * 0.2;
+                            if(uInside > 0.5) {
+                                // 洋葱结构分层 [cite: 51]
+                                if(dist < 1.0) finalCol = vec3(1.0, 1.0, 1.2); // Fe
+                                else if(dist < 2.0) finalCol = vec3(0.4, 0.6, 1.0); // Si
+                                else finalCol = vec3(1.0, 0.4, 0.0); // H/He
+                                finalCol *= (1.0 + ripples);
+                            } else {
+                                vec3 starColor = (uMass > 8.0) ? vec3(0.5, 0.7, 1.0) : vec3(1.0, 0.6, 0.2);
+                                finalCol = starColor * (1.2 + ripples);
+                            }
+                            break;
+                        }
+                    } else { // 遗迹期
+                        if(uMass > 20.0) { // 黑洞引力透镜
+                            float rs = 1.5;
+                            if(dist < rs) { finalCol = vec3(0.0); break; }
+                            // 弯曲光线
+                            vec3 force = -p * (rs / pow(dist, 3.0));
+                            rd = normalize(rd + force * 0.4);
+                            // 抛射物流体力学仿真 (吸积盘/残留物)
+                            float disk = abs(p.y) - (0.1 + fbm(p + uTime) * 0.2);
+                            if(disk < 0.0 && dist < 8.0 && dist > 2.0) {
+                                finalCol += vec3(1.0, 0.4, 0.1) * fbm(p*1.5 + uTime) * (2.0/dist);
+                            }
+                        } else if(uMass > 8.0) { // 中子星 [cite: 58]
+                            if(dist < 0.6) { finalCol = vec3(0.0, 0.8, 1.0) * 10.0; break; }
+                        } else { // 白矮星 [cite: 39]
+                            if(dist < 0.4) { finalCol = vec3(1.0, 1.0, 1.0) * 5.0; break; }
+                        }
+                    }
+                    t += 0.15;
+                    if(t > 40.0) break;
+                }
+
+                // 背景星空 (物理扰动)
+                if(length(finalCol) < 0.01) {
+                    finalCol = vec3(pow(fbm(rd * 30.0), 12.0));
+                }
+
+                gl_FragColor = vec4(pow(finalCol, vec3(0.4545)), 1.0);
+            }
+        `
+    };
+
+    function init() {
+        scene = new THREE.Scene();
+        clock = new THREE.Clock();
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+        camera.position.set(0, 5, 18);
+
+        renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const mat = new THREE.ShaderMaterial({
+            uniforms: FluidShader.uniforms,
+            vertexShader: FluidShader.vertexShader,
+            fragmentShader: FluidShader.fragmentShader,
+            depthWrite: false, depthTest: false
+        });
+        mainPlane = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+        scene.add(mainPlane);
+
+        setupEvents();
+        animate();
+    }
+
+    function setupEvents() {
+        document.getElementById('mSlider').oninput = (e) => {
+            params.mass = parseFloat(e.target.value);
+            document.getElementById('mVal').innerText = params.mass;
+        };
+        document.getElementById('sSlider').oninput = (e) => {
+            params.speed = parseFloat(e.target.value);
+            document.getElementById('sVal').innerText = params.speed;
+        };
+        document.getElementById('viewBtn').onclick = () => {
+            params.isInside = params.isInside > 0.5 ? 0.0 : 1.0;
+        };
+        document.getElementById('runBtn').onclick = () => {
+            params.stage = 1.0;
+            document.getElementById('status').innerText = "物理演化阶段：核心塌缩。";
+        };
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = clock.getDelta() * params.speed;
+        params.time += dt;
+
+        const uni = FluidShader.uniforms;
+        uni.uTime.value = params.time;
+        uni.uMass.value = params.mass;
+        uni.uInside.value = params.isInside;
+        uni.uStage.value = params.stage;
+        uni.uCameraPos.value.copy(camera.position);
+        
+        let dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+        uni.uCameraDir.value.copy(dir);
+        uni.uResolution.value.set(window.innerWidth, window.innerHeight);
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    init();
+</script>
+</body>
+</html>

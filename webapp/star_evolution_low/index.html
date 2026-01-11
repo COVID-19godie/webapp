@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>恒星演化：星云级画质版</title>
+    <style>
+        :root {
+            --bg-color: #010103;
+            --panel-bg: rgba(5, 10, 20, 0.7);
+            --accent-color: #00f3ff;
+            --text-color: #dbeaff;
+        }
+
+        body {
+            margin: 0; overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', 'Roboto Mono', monospace;
+            color: var(--text-color);
+            user-select: none;
+        }
+
+        canvas { display: block; }
+
+        /* 左侧控制台 */
+        #dashboard {
+            position: absolute; top: 20px; left: 20px; width: 300px;
+            display: flex; flex-direction: column; gap: 15px; pointer-events: none; z-index: 10;
+        }
+        .panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-left: 2px solid var(--accent-color);
+            padding: 20px; pointer-events: auto;
+            border-radius: 4px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        h2 { margin: 0 0 15px 0; font-size: 0.9rem; color: var(--accent-color); letter-spacing: 2px; text-transform: uppercase; }
+
+        /* 右侧日志 */
+        #log-window {
+            position: absolute; top: 20px; right: 20px; width: 360px; bottom: 60px;
+            background: linear-gradient(180deg, rgba(10,15,30,0.9) 0%, rgba(5,5,10,0.8) 100%);
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            display: flex; flex-direction: column; pointer-events: auto; z-index: 10;
+            border-radius: 4px;
+        }
+        #log-header {
+            padding: 12px 15px; background: rgba(0, 243, 255, 0.05);
+            font-size: 0.8rem; font-weight: bold; letter-spacing: 1px; color: var(--accent-color);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        #log-content {
+            flex: 1; overflow-y: auto; padding: 15px;
+            font-size: 0.8rem; font-family: 'Consolas', monospace;
+        }
+        #log-content::-webkit-scrollbar { width: 4px; }
+        #log-content::-webkit-scrollbar-thumb { background: #334455; border-radius: 2px; }
+
+        .log-entry { margin-bottom: 8px; line-height: 1.4; text-shadow: 0 1px 2px black; }
+        .log-time { color: #557788; font-size: 0.7rem; margin-right: 8px; }
+        .log-text { color: #ccddff; }
+        .log-imp { color: #ffcc00; font-weight: bold; }
+        .log-err { color: #ff3355; text-shadow: 0 0 5px rgba(255,50,80,0.5); }
+
+        /* UI 组件 */
+        input[type=range] { width: 100%; height: 3px; background: #334; accent-color: var(--accent-color); margin: 10px 0; cursor: pointer;}
+        
+        button {
+            width: 100%; padding: 12px;
+            background: rgba(0, 243, 255, 0.1); border: 1px solid rgba(0, 243, 255, 0.3);
+            color: var(--accent-color); font-weight: bold; text-transform: uppercase;
+            cursor: pointer; transition: 0.3s; margin-top: 10px; letter-spacing: 1px;
+        }
+        button:hover { background: var(--accent-color); color: #000; box-shadow: 0 0 20px var(--accent-color); }
+        button.active { background: #ff3355; border-color: #ff3355; color: white; box-shadow: 0 0 20px #ff3355; }
+
+        .row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #8899aa; }
+        
+        /* 开关 */
+        .switch { position: relative; width: 32px; height: 16px; display: inline-block; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334; transition: .4s; border-radius: 8px; }
+        .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--accent-color); }
+        input:checked + .slider:before { transform: translateX(16px); }
+
+        #hr-container { height: 160px; margin-top: 15px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; }
+        
+        #watermark {
+            position: absolute; bottom: 20px; right: 20px; text-align: right;
+            color: rgba(255,255,255,0.15); font-family: "KaiTi", serif; font-size: 1.1rem;
+            pointer-events: none; z-index: 5;
+        }
+        
+        #hint { position: absolute; bottom: 20px; left: 20px; font-size: 0.75rem; color: rgba(255,255,255,0.3); pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div id="dashboard">
+    <div class="panel">
+        <h2>System Control</h2>
+        <div class="row">
+            <span>Mass: <strong id="mass-disp" style="color:white; font-size:1.1rem;">1.0</strong> M☉</span>
+        </div>
+        <input type="range" id="mass-slider" min="0.1" max="40" step="0.1" value="1.0">
+        
+        <div class="row" style="margin-top:10px;">
+            <span>X-Ray Vision (Cutaway)</span>
+            <label class="switch"><input type="checkbox" id="cutaway-check"><span class="slider"></span></label>
+        </div>
+
+        <button id="start-btn">Initialize Sequence</button>
+    </div>
+    
+    <div class="panel" style="padding:10px;">
+        <h2 style="margin:5px 5px 10px 5px;">H-R Diagram</h2>
+        <div id="hr-container">
+            <canvas id="hr-canvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="log-window">
+    <div id="log-header">OBSERVATION LOG // 观测日志</div>
+    <div id="log-content"></div>
+</div>
+
+<div id="watermark">南阳一中 张铭戈<br>公众号戈悟志理琢瑷成器</div>
+<div id="hint">SCROLL to Zoom | DRAG to Pan (Locked on Star)</div>
+
+<canvas id="main-canvas"></canvas>
+
+<script>
+/**
+ * 恒星演化终极版：流体粒子与体积渲染
+ */
+
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d', { alpha: false }); // 优化
+const hrCanvas = document.getElementById('hr-canvas');
+const hrCtx = hrCanvas.getContext('2d');
+const logDom = document.getElementById('log-content');
+
+// === 核心配置 ===
+const CFG = {
+    starBaseRadius: 50,
+    zoomSensitivity: 0.1,
+    particleCountMod: 2.0, // 粒子数量倍率 (1.0 = 标准, 2.0 = 高画质)
+    turbulenceScale: 0.005, // 噪声缩放
+    timeSpeed: 1.0
+};
+
+// === 视图控制 ===
+let cam = { x: 0, y: 0, zoom: 0.8, targetZoom: 0.8 };
+
+// === 物理/视觉数据 ===
+const COLORS = {
+    O: [100, 150, 255], B: [150, 180, 255], A: [200, 220, 255],
+    F: [255, 255, 240], G: [255, 220, 180], K: [255, 160, 100], M: [255, 80, 60],
+    WD: [180, 230, 255], Neutron: [0, 255, 255], BlackHole: [0,0,0]
+};
+const GAS_COLORS = {
+    H: [255, 50, 50], He: [100, 200, 255], C: [255, 200, 100], 
+    O: [50, 255, 150], Ne: [200, 50, 200], Fe: [150, 50, 0]
+};
+
+// === 仿真状态 ===
+let sim = {
+    active: false,
+    tick: 0,
+    mass: 1.0,
+    stage: 'init',
+    star: { r: CFG.starBaseRadius, temp: 5700, lum: 1, color: COLORS.G, layers: ['H'], turbT: 0 },
+    particles: [],
+    shockwaves: []
+};
+
+// === 噪声生成器 (简单版 Perlin/Simplex 用于模拟湍流) ===
+const Noise = {
+    p: new Uint8Array(512),
+    init: function() {
+        for(let i=0; i<512; i++) this.p[i] = Math.floor(Math.random()*255);
+    },
+    // 简化的2D噪声
+    get: function(x, y) {
+        return Math.sin(x) * Math.cos(y) * Math.sin(x*0.5 + y*0.5); 
+    }
+};
+Noise.init();
+
+// === 初始化 ===
+function init() {
+    resize();
+    renderHRBg();
+    updateDerived(1.0);
+    log("系统就绪。渲染引擎：Nebula-X v2.0", "imp");
+    animate();
+}
+
+// === 交互 ===
+window.addEventListener('resize', resize);
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    hrCanvas.width = document.getElementById('hr-container').offsetWidth;
+    hrCanvas.height = document.getElementById('hr-container').offsetHeight;
+    renderHRBg();
+}
+
+document.getElementById('mass-slider').addEventListener('input', e => {
+    if(!sim.active) {
+        sim.mass = parseFloat(e.target.value);
+        document.getElementById('mass-disp').innerText = sim.mass.toFixed(1);
+        updateDerived(sim.mass);
+    }
+});
+
+document.getElementById('start-btn').addEventListener('click', function() {
+    sim.active = !sim.active;
+    this.innerText = sim.active ? "ABORT SEQUENCE" : "INITIALIZE SEQUENCE";
+    this.classList.toggle('active', sim.active);
+    if(sim.active) {
+        if(sim.tick > 10) reset();
+        log(`演化程序启动。质量: ${sim.mass} M☉`, "imp");
+    } else {
+        log("演化中止。", "err");
+    }
+});
+
+window.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    cam.targetZoom *= delta;
+    cam.targetZoom = Math.max(0.05, Math.min(50, cam.targetZoom));
+}, {passive:false});
+
+function reset() {
+    sim.tick = 0;
+    sim.stage = 'init';
+    // 不清除粒子，让它们自然消散，创造历史感
+    // sim.particles = []; 
+    updateDerived(sim.mass);
+}
+
+function log(msg, type='norm') {
+    const d = document.createElement('div');
+    d.className = 'log-entry';
+    const t = sim.active ? `T+${sim.tick}Myr` : "READY";
+    let c = 'log-text';
+    if(type==='imp') c='log-imp';
+    if(type==='err') c='log-err';
+    d.innerHTML = `<span class="log-time">[${t}]</span><span class="${c}">${msg}</span>`;
+    logDom.appendChild(d);
+    logDom.scrollTop = logDom.scrollHeight;
+}
+
+// === 核心逻辑 ===
+function updateDerived(m) {
+    // 基础预览计算
+    if(m<0.5) setStar(3500, 0.05, m*0.6*CFG.starBaseRadius, COLORS.M, ['H']);
+    else if(m<8) setStar(5800, 1, Math.pow(m,0.8)*CFG.starBaseRadius, COLORS.G, ['H']);
+    else setStar(30000, 10000, Math.pow(m,0.6)*CFG.starBaseRadius, COLORS.O, ['H']);
+}
+
+function setStar(t, l, r, c, lay) {
+    sim.star.temp = t; sim.star.lum = l; sim.star.r = r; sim.star.color = c; sim.star.layers = lay;
+}
+
+function evolve() {
+    sim.tick++;
+    const t = sim.tick;
+    const m = sim.mass;
+    sim.star.turbT += 0.01;
+
+    // 1. 低质量
+    if(m < 0.5) {
+        if(t===1) log("进入主序带。红矮星燃烧缓慢。", "norm");
+        if(t > 600 && sim.stage !== 'blue') {
+            sim.stage = 'blue'; log("氢耗尽。核心变热，演化为蓝矮星。", "imp");
+        }
+        if(t > 900 && sim.stage !== 'end') {
+            sim.stage = 'end'; log("聚变停止。形成氦白矮星。", "norm");
+        }
+        // 视觉
+        if(t<600) setStar(3500, 0.05, m*CFG.starBaseRadius, COLORS.M, ['H']);
+        else if(t<900) setStar(8000, 0.1, m*CFG.starBaseRadius, [150,180,255], ['He']);
+        else setStar(10000, 0.01, 15, COLORS.WD, ['He']);
+    }
+    // 2. 中质量
+    else if(m < 8) {
+        const tRGB = 300, tNeb = 500;
+        if(t < tRGB) {
+            if(sim.stage!=='main') {sim.stage='main'; log("主序星阶段。氢聚变稳定。", "norm");}
+            setStar(5800, 1, Math.pow(m,0.8)*CFG.starBaseRadius, COLORS.G, ['H']);
+        } else if(t < tNeb) {
+            if(sim.stage!=='giant') {sim.stage='giant'; log("红巨星阶段。外层急剧膨胀。", "imp");}
+            let p = (t-tRGB)/(tNeb-tRGB);
+            let r = Math.pow(m,0.8)*CFG.starBaseRadius * (1+p*6);
+            // 周期性喷发烟尘
+            if(t % 50 === 0) spawnGas(r, 'H', 20, 0.5); 
+            setStar(3000, 100, r + Math.sin(t*0.2)*5, COLORS.K, ['He','H']);
+        } else if (t === tNeb) {
+            sim.stage = 'nebula'; log("外层抛离！形成行星状星云。", "imp");
+            spawnNebula(sim.star.r, 'He', 2000); // 大量粒子
+        } else {
+            if(sim.stage!=='wd' && t>tNeb+50) {sim.stage='wd'; log("中心留下碳氧白矮星。", "norm");}
+            setStar(20000, 0.1, 12, COLORS.WD, ['C']);
+        }
+    }
+    // 3. 大质量
+    else {
+        const tSuper = 200;
+        if(t < tSuper) {
+            if(sim.stage!=='main'){sim.stage='main'; log("蓝巨星。强恒星风。", "norm");}
+            setStar(30000, 10000, Math.pow(m,0.6)*CFG.starBaseRadius, COLORS.O, ['H']);
+            if(t%10===0) spawnGas(sim.star.r, 'H', 5, 2); // 恒星风
+        } else if(t < tSuper + 100) {
+            if(sim.stage!=='supergiant'){sim.stage='supergiant'; log("红超巨星。洋葱结构核聚变。", "imp");}
+            let p = (t-tSuper)/100;
+            let lay = p>0.8 ? ['Fe','Si','O','C'] : ['C','He'];
+            if(p>0.9 && sim.stage!=='iron') {sim.stage='iron'; log("警告：铁核形成！坍缩倒计时。", "err");}
+            setStar(3500, 50000, Math.pow(m,0.6)*CFG.starBaseRadius*(1+p*8), COLORS.M, lay);
+        } else if(t === tSuper + 100) {
+            sim.stage = 'sn'; log("超新星爆发！！！", "err");
+            spawnSupernova(sim.star.r);
+        } else {
+            if(m > 20) {
+                if(sim.stage!=='bh'){sim.stage='bh'; log("形成黑洞。", "imp");}
+                setStar(0,0,30, COLORS.BlackHole, ['BH']);
+            } else {
+                if(sim.stage!=='ns'){sim.stage='ns'; log("形成中子星。", "imp");}
+                setStar(100000,1,15, COLORS.Neutron, ['N']);
+            }
+        }
+    }
+}
+
+// === 高级粒子系统 ===
+function spawnGas(r, elem, count, speedBase) {
+    const c = GAS_COLORS[elem] || [255,255,255];
+    for(let i=0; i<count; i++) {
+        const a = Math.random()*Math.PI*2;
+        const dist = r * (0.8 + Math.random()*0.4);
+        const v = (0.5 + Math.random()) * speedBase;
+        sim.particles.push({
+            x: Math.cos(a)*dist, y: Math.sin(a)*dist,
+            vx: Math.cos(a)*v, vy: Math.sin(a)*v,
+            life: 1.0, decay: 0.005 + Math.random()*0.005,
+            size: 20 + Math.random()*40, // 大尺寸产生云雾感
+            color: c, type: 'gas'
+        });
+    }
+}
+
+function spawnNebula(r, elem, count) {
+    const c = GAS_COLORS[elem];
+    for(let i=0; i<count; i++) {
+        const a = Math.random()*Math.PI*2;
+        const d = r * Math.random();
+        const v = 2 + Math.random()*3;
+        sim.particles.push({
+            x: Math.cos(a)*d, y: Math.sin(a)*d,
+            vx: Math.cos(a)*v, vy: Math.sin(a)*v,
+            life: 1.0, decay: 0.001 + Math.random()*0.002, // 极慢衰减
+            size: 40 + Math.random()*60, // 巨大的云团
+            color: [c[0]+Math.random()*50, c[1], c[2]+Math.random()*50],
+            type: 'nebula',
+            noiseOffset: Math.random()*100
+        });
+    }
+}
+
+function spawnSupernova(r) {
+    // 冲击波
+    sim.shockwaves.push({r: r, maxR: r*20, width: 20, alpha: 1.0});
+    
+    // 剧烈喷发
+    for(let i=0; i<4000; i++) { // 海量粒子
+        const a = Math.random()*Math.PI*2;
+        const d = r * Math.random();
+        const v = 10 + Math.random()*15; // 极速
+        const type = Math.random()>0.8 ? 'dust' : 'plasma';
+        sim.particles.push({
+            x: Math.cos(a)*d, y: Math.sin(a)*d,
+            vx: Math.cos(a)*v, vy: Math.sin(a)*v,
+            life: 1.0, decay: 0.001 + Math.random()*0.001,
+            size: type==='dust' ? 50 : 20,
+            color: type==='dust' ? [50,30,30] : [200,220,255],
+            type: type,
+            noiseOffset: Math.random()*1000
+        });
+    }
+}
+
+// === 渲染循环 ===
+function animate() {
+    if(sim.active) evolve();
+    
+    // 平滑缩放
+    cam.zoom += (cam.targetZoom - cam.zoom) * 0.1;
+
+    // 清屏 (带微弱拖尾，但这在Additive混合下可能导致过度曝光，所以用纯黑清屏)
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#010103';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 绘制背景
+    drawBgStars();
+
+    ctx.save();
+    ctx.translate(canvas.width/2, canvas.height/2);
+    ctx.scale(cam.zoom, cam.zoom);
+    ctx.translate(-cam.x, -cam.y);
+
+    // === 1. 绘制粒子 (星云层) ===
+    // 关键：使用 lighter (Additive) 混合模式实现发光气体的叠加感
+    ctx.globalCompositeOperation = 'lighter';
+    
+    for(let i=sim.particles.length-1; i>=0; i--) {
+        let p = sim.particles[i];
+        
+        // 物理更新：流体阻力 + 卷曲噪声
+        p.vx *= 0.96; p.vy *= 0.96; // 强阻力
+        
+        // 添加噪声扰动 (模拟太空乱流)
+        if(p.type === 'nebula' || p.type === 'plasma') {
+            let n = Noise.get(p.x * 0.002, p.y * 0.002 + sim.star.turbT);
+            p.x += Math.cos(n * Math.PI * 2) * 2;
+            p.y += Math.sin(n * Math.PI * 2) * 2;
+        }
+
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= p.decay;
+
+        if(p.life <= 0) {
+            sim.particles.splice(i, 1);
+            continue;
+        }
+
+        // 视觉渲染：使用径向渐变模拟柔软的球体
+        // 性能杀手：每个粒子一个渐变。但效果最好。
+        // 为了优化一点点，只有大粒子才用渐变，小粒子用实心圆
+        
+        const alpha = p.life * (p.type==='dust'? 0.2 : 0.4);
+        const r = p.size;
+        
+        // 只有在屏幕内的才绘制
+        let screenX = (p.x - cam.x)*cam.zoom + canvas.width/2;
+        let screenY = (p.y - cam.y)*cam.zoom + canvas.height/2;
+        if(screenX < -r*cam.zoom || screenX > canvas.width + r*cam.zoom) continue;
+
+        if(p.type === 'dust') {
+            // 尘埃遮挡光线
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]}, ${alpha})`;
+            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
+            ctx.globalCompositeOperation = 'lighter'; // 切回
+        } else {
+            // 发光气体
+            let g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+            g.addColorStop(0, `rgba(${p.color[0]},${p.color[1]},${p.color[2]}, ${alpha})`);
+            g.addColorStop(1, `rgba(${p.color[0]},${p.color[1]},${p.color[2]}, 0)`);
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
+    // === 2. 绘制冲击波 ===
+    ctx.globalCompositeOperation = 'screen';
+    for(let i=sim.shockwaves.length-1; i>=0; i--) {
+        let s = sim.shockwaves[i];
+        s.r += (s.maxR - s.r) * 0.05;
+        s.alpha -= 0.01;
+        if(s.alpha <= 0) { sim.shockwaves.splice(i,1); continue; }
+
+        ctx.strokeStyle = `rgba(200, 220, 255, ${s.alpha})`;
+        ctx.lineWidth = s.width * (1 - s.r/s.maxR) + 2;
+        ctx.beginPath(); ctx.arc(0,0, s.r, 0, Math.PI*2); ctx.stroke();
+    }
+
+    // === 3. 绘制恒星主体 (恢复正常混合) ===
+    ctx.globalCompositeOperation = 'source-over';
+    
+    if(sim.stage === 'bh') {
+        drawBlackHole();
+    } else if (sim.stage === 'ns') {
+        drawNeutron();
+    } else if (sim.stage !== 'sn' || sim.tick % 4 < 2) {
+        // 剖面图或外观图
+        if(document.getElementById('cutaway-check').checked && sim.mass >= 0.5 && sim.stage !== 'init') {
+            drawCutaway();
+        } else {
+            drawStarBody();
+        }
+    }
+
+    ctx.restore();
+
+    // 更新HR图
+    renderHRPoint();
+
+    requestAnimationFrame(animate);
+}
+
+// === 恒星本体渲染 ===
+function drawStarBody() {
+    const r = sim.star.r;
+    const c = sim.star.color;
+    
+    // 1. 光晕 (Bloom)
+    ctx.globalCompositeOperation = 'screen';
+    let glow = ctx.createRadialGradient(0,0, r*0.8, 0,0, r*3);
+    glow.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]}, 0.8)`);
+    glow.addColorStop(1, `rgba(0,0,0,0)`);
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0,0,r*3,0,Math.PI*2); ctx.fill();
+
+    // 2. 表面湍流 (Procedural Texture)
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.clip();
+    
+    // 基础色
+    ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.fill();
+
+    // 动态噪点层 (模拟对流颗粒)
+    ctx.globalCompositeOperation = 'overlay';
+    const time = sim.star.turbT;
+    for(let i=0; i<5; i++) {
+        let size = r * (0.3 + Math.sin(time+i)*0.1);
+        let ang = time * (0.2 + i*0.1) + i*2;
+        let x = Math.cos(ang) * r * 0.4;
+        let y = Math.sin(ang) * r * 0.4;
+        
+        let grad = ctx.createRadialGradient(x,y,0, x,y,size);
+        grad.addColorStop(0, 'rgba(255,255,255,0.4)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(x,y,size,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+}
+
+function drawCutaway() {
+    const r = sim.star.r;
+    const layers = sim.star.layers;
+    
+    // 背景光晕
+    ctx.shadowBlur = 20; ctx.shadowColor = `rgba(${sim.star.color[0]},${sim.star.color[1]},${sim.star.color[2]},0.5)`;
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fillStyle='#111'; ctx.fill(); ctx.shadowBlur=0;
+
+    // 绘制层级
+    for(let i=layers.length-1; i>=0; i--) {
+        let layR = i===0 ? r*0.2 : r * (0.2 + 0.8 * ((i+1)/layers.length));
+        if(i===0) layR = Math.max(layR, 5); // 最小核心
+        
+        let col = GAS_COLORS[layers[i]];
+        
+        ctx.beginPath(); ctx.arc(0,0,layR,0,Math.PI*2);
+        ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth=1; ctx.stroke();
+
+        // 只有放大时显示文字
+        if(layR * cam.zoom > 10) {
+            ctx.fillStyle = '#000'; ctx.font = `bold ${Math.max(8, 10/cam.zoom)}px Arial`;
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            let txtY = i===0 ? 0 : -layR + (layR - r*(0.2+0.8*(i/layers.length)))/2;
+            ctx.fillText(layers[i], 0, txtY);
+        }
+    }
+}
+
+function drawBlackHole() {
+    // 吸积盘
+    ctx.save(); ctx.scale(1, 0.2);
+    let g = ctx.createRadialGradient(0,0,20, 0,0,120);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(0.2, '#ffaa55');
+    g.addColorStop(0.5, '#550000');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,120,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    
+    // 本体
+    ctx.fillStyle = 'black'; ctx.shadowBlur=10; ctx.shadowColor='#ffaa55';
+    ctx.beginPath(); ctx.arc(0,0,20,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+    // 光子环
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.stroke();
+}
+
+function drawNeutron() {
+    ctx.save(); ctx.rotate(sim.tick*0.8);
+    let g = ctx.createLinearGradient(0,-500,0,500);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, '#00ffff'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(-2,-500,4,1000);
+    ctx.restore();
+    drawStarBody();
+}
+
+// === HR 图 ===
+function renderHRBg() {
+    const w = hrCanvas.width, h = hrCanvas.height;
+    hrCtx.fillStyle = '#0a0f18'; hrCtx.fillRect(0,0,w,h);
+    // 绘制主序带
+    hrCtx.beginPath(); hrCtx.strokeStyle='rgba(255,255,255,0.1)'; hrCtx.lineWidth=20;
+    hrCtx.moveTo(10,20); hrCtx.quadraticCurveTo(w/2, h/2, w-20, h-20); hrCtx.stroke();
+}
+function renderHRPoint() {
+    renderHRBg();
+    const w = hrCanvas.width, h = hrCanvas.height;
+    // 映射
+    let x = w * (1 - (Math.log10(sim.star.temp)-3.4)/(4.7-3.4));
+    let y = h * (1 - (Math.log10(Math.max(sim.star.lum, 0.001))+4)/10);
+    
+    hrCtx.fillStyle = '#00f3ff'; hrCtx.shadowBlur=8; hrCtx.shadowColor='#00f3ff';
+    hrCtx.beginPath(); hrCtx.arc(x,y,4,0,Math.PI*2); hrCtx.fill(); hrCtx.shadowBlur=0;
+}
+
+// === 背景星空 ===
+const bgStars = [];
+for(let i=0; i<400; i++) {
+    bgStars.push({
+        x: Math.random()*2-1, y: Math.random()*2-1, z: Math.random()*3+1,
+        color: Math.random()>0.8 ? [150,200,255] : [255,255,255]
+    });
+}
+function drawBgStars() {
+    // 简单视差
+    ctx.globalCompositeOperation = 'source-over';
+    bgStars.forEach(s => {
+        // 根据cam位置计算偏移，制造深度感
+        let sx = (s.x * canvas.width) - cam.x * (1/s.z) * 0.5 + canvas.width/2;
+        let sy = (s.y * canvas.height) - cam.y * (1/s.z) * 0.5 + canvas.height/2;
+        
+        // 循环平铺
+        sx = (sx % canvas.width + canvas.width) % canvas.width;
+        sy = (sy % canvas.height + canvas.height) % canvas.height;
+
+        let alpha = (1/s.z) * (0.5 + 0.5*Math.sin(sim.tick*0.05 + s.x*10));
+        ctx.fillStyle = `rgba(${s.color[0]},${s.color[1]},${s.color[2]},${alpha})`;
+        ctx.beginPath(); ctx.arc(sx, sy, 1.5/s.z, 0, Math.PI*2); ctx.fill();
+    });
+}
+
+init();
+</script>
+</body>
+</html>

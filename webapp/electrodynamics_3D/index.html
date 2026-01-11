@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>物理仿真 HUD 终极版 (平滑防晕+长轨迹)</title>
+    <style>
+        /* --- 1. 基础布局 --- */
+        body { 
+            margin: 0; overflow: hidden; background-color: #050508; 
+            font-family: 'Segoe UI', Roboto, sans-serif; color: #eee; 
+            touch-action: none; -webkit-user-select: none; user-select: none;
+        }
+        canvas { display: block; cursor: move; }
+
+        /* --- 2. 赛博朋克 HUD 面板 --- */
+        #controls {
+            position: absolute; 
+            top: 20px; right: 20px; width: 320px;
+            background: rgba(16, 20, 30, 0.85);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            padding: 20px; 
+            border-radius: 16px; border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            z-index: 100; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            max-height: 85vh; overflow-y: auto;
+        }
+
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        h2 { 
+            margin: 0; font-size: 18px; 
+            background: linear-gradient(90deg, #4facfe, #00f2fe);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-weight: 8000; letter-spacing: 1px;
+        }
+
+        #toggle-panel-btn {
+            background: rgba(255,255,255,0.1); border: none; color: #4facfe;
+            width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-weight: bold;
+        }
+
+        #panel-content { transition: opacity 0.3s; }
+        .hidden { display: none !important; opacity: 0; }
+
+        /* --- 控件样式 --- */
+        .group-title {
+            font-size: 11px; color: #666; text-transform: uppercase; 
+            margin-top: 15px; margin-bottom: 6px; letter-spacing: 1px;
+            border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px;
+        }
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .vector-inputs { display: flex; gap: 6px; justify-content: space-between; }
+        .input-wrapper { display: flex; flex-direction: column; align-items: center; flex: 1; }
+        .input-label { font-size: 9px; color: #4facfe; margin-bottom: 2px; font-weight: bold; opacity: 0.8; }
+        
+        input[type="number"] { 
+            width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.4); 
+            border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
+            color: #fff; padding: 4px; font-size: 12px;
+            text-align: center; font-family: 'Consolas', monospace; font-weight: bold;
+        }
+        input[type="number"]:focus { border-color: #4facfe; outline: none;}
+
+        .segmented-control { display: flex; background: rgba(255,255,255,0.05); border-radius: 6px; padding: 2px; }
+        .segmented-control label { flex: 1; text-align: center; padding: 4px 0; font-size: 11px; cursor: pointer; color: #888; border-radius: 4px; }
+        .segmented-control input { display: none; }
+        .segmented-control input:checked + span { background: rgba(79, 172, 254, 0.2); color: #4facfe; font-weight: bold; }
+        .seg-item { display: block; padding: 2px; border-radius: 4px;}
+
+        .toggle-switch { width: 32px; height: 16px; appearance: none; background: #333; border-radius: 8px; position: relative; cursor: pointer; outline: none; transition: 0.3s; }
+        .toggle-switch:checked { background: #4facfe; }
+        .toggle-switch::after { content: ''; position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: 0.3s; }
+        .toggle-switch:checked::after { transform: translateX(16px); }
+
+        .btn-main { 
+            width: 100%; padding: 10px; margin-top: 15px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border: none; border-radius: 8px; color: #000; font-weight: 800; 
+            cursor: pointer; transition: 0.2s; letter-spacing: 1px; font-size: 14px;
+        }
+        .btn-sec {
+            width: 100%; padding: 8px; margin-top: 8px; background: transparent;
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #888;
+            cursor: pointer; transition: 0.2s; font-size: 12px;
+        }
+
+        #watermark {
+            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+            color: #4facfe; opacity: 0.95;
+            font-family: 'KaiTi', 'STKaiti', '楷体', serif;
+            font-size: 24px; font-weight: bold; pointer-events: none; z-index: 50;
+            text-shadow: 0 0 10px rgba(79, 172, 254, 0.8);
+            user-select: none; letter-spacing: 2px; white-space: nowrap;
+        }
+        
+        #fps-counter { position: absolute; top: 10px; left: 10px; font-size: 10px; color: #444; font-family: monospace; }
+        
+        /* 提示 Toast 样式 */
+        #toast-msg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8); border: 1px solid #ff4466; color: #ff4466;
+            padding: 10px 20px; border-radius: 8px; font-size: 14px; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s; z-index: 200; font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            #controls { top: auto; bottom: 0; left: 0; right: 0; width: auto; border-radius: 16px 16px 0 0; padding: 15px 20px; max-height: 60vh; }
+            #watermark { bottom: 80px; font-size: 18px; transition: bottom 0.3s; }
+            #controls.minimized { padding: 10px 20px; background: rgba(16, 20, 30, 0.95); }
+            #controls.minimized h2 { display: none; }
+            #controls.minimized #mini-start-btn { display: block; flex: 1; margin-right: 15px; }
+        }
+
+        #mini-start-btn { display: none; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border: none; border-radius: 6px; color: #000; font-weight: bold; padding: 8px; cursor: pointer; text-align: center; }
+        
+        /* 陀螺仪专属样式 */
+        .gyro-label { color: #f0ad4e; font-size: 10px; margin-left: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="fps-counter">Native Engine | Smooth Cam + Pan</div>
+<div id="watermark">南阳一中 张铭戈 公众号 戈悟志理琢瑷成器</div>
+<div id="toast-msg">跟随模式下无法平移视角</div>
+
+<div id="controls">
+    <div class="panel-header">
+        <button id="mini-start-btn">启动仿真</button>
+        <h2>PHYSICS HUD</h2>
+        <button id="toggle-panel-btn"> − </button>
+    </div>
+
+    <div id="panel-content">
+        <div class="row">
+            <span style="font-size:12px;color:#aaa">相机模式</span>
+            <div class="segmented-control" style="width:120px">
+                <label><input type="radio" name="cam" value="fixed" checked onchange="updateCamMode()"><span class="seg-item">固定</span></label>
+                <label><input type="radio" name="cam" value="follow" onchange="updateCamMode()"><span class="seg-item">跟随</span></label>
+            </div>
+        </div>
+        
+        <div class="row">
+            <span style="font-size:12px;color:#aaa">陀螺仪控制 <span class="gyro-label" id="gyro-status">(点击开启)</span></span>
+            <input type="checkbox" id="use-gyro" class="toggle-switch">
+        </div>
+
+        <div class="row">
+            <span style="font-size:12px;color:#aaa">显示轨迹</span>
+            <input type="checkbox" id="show-trail" class="toggle-switch" checked>
+        </div>
+
+        <div class="group-title">粒子属性</div>
+        <div class="vector-inputs">
+            <div class="input-wrapper"><span class="input-label">Q</span><input id="q" type="number" value="1" step="0.1"></div>
+            <div class="input-wrapper"><span class="input-label">M</span><input id="m" type="number" value="1" step="0.1"></div>
+        </div>
+
+        <div class="group-title">初始速度 V</div>
+        <div class="vector-inputs">
+            <div class="input-wrapper"><span class="input-label">X</span><input id="vx" type="number" value="5"></div>
+            <div class="input-wrapper"><span class="input-label">Y</span><input id="vy" type="number" value="0"></div>
+            <div class="input-wrapper"><span class="input-label">Z</span><input id="vz" type="number" value="2"></div>
+        </div>
+
+        <div class="group-title">磁场 B</div>
+        <div class="vector-inputs">
+            <div class="input-wrapper"><span class="input-label">X</span><input id="bx" type="number" value="0"></div>
+            <div class="input-wrapper"><span class="input-label">Y</span><input id="by" type="number" value="0"></div>
+            <div class="input-wrapper"><span class="input-label">Z</span><input id="bz" type="number" value="1"></div>
+        </div>
+
+        <div class="group-title">电场 E</div>
+        <div class="vector-inputs">
+            <div class="input-wrapper"><span class="input-label">X</span><input id="ex" type="number" value="0"></div>
+            <div class="input-wrapper"><span class="input-label">Y</span><input id="ey" type="number" value="0"></div>
+            <div class="input-wrapper"><span class="input-label">Z</span><input id="ez" type="number" value="0"></div>
+        </div>
+
+        <button id="btn-toggle" class="btn-main">启动仿真</button>
+        <button id="btn-reset" class="btn-sec">重置状态</button>
+    </div>
+</div>
+
+<canvas id="simCanvas"></canvas>
+
+<script>
+    // --- 数学库 ---
+    class Vec3 {
+        constructor(x, y, z) { this.x = x; this.y = y; this.z = z; }
+        add(v) { return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z); }
+        sub(v) { return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z); }
+        mul(s) { return new Vec3(this.x * s, this.y * s, this.z * s); }
+        cross(v) { return new Vec3(this.y * v.z - this.z * v.y, this.z * v.x - this.x * v.z, this.x * v.y - this.y * v.x); }
+        clone() { return new Vec3(this.x, this.y, this.z); }
+        length() { return Math.sqrt(this.x*this.x + this.y*this.y + this.z*this.z); }
+    }
+
+    // --- 全局配置 ---
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+
+    // 修改：增加最大轨迹点数以保留更多轨迹
+    const MAX_TRAIL_POINTS = 4000;
+    const SIM_SPEED = 2;
+    const TIME_STEP = 0.015;
+
+    let p = { pos: new Vec3(0, 0, 0), vel: new Vec3(5, 0, 2), q: 1, m: 1, B: new Vec3(0, 0, 1), E: new Vec3(0, 0, 0) };
+    let trail = [];
+    let isRunning = false;
+    let cameraMode = 'fixed';
+    
+    // --- 平滑相机系统 (修改重点) ---
+    // 目标状态 (Target) - 鼠标/触摸直接改变这里
+    let targetCamRot = { x: -0.4, y: 0.8 }; 
+    let targetFocus = new Vec3(0, 0, 0);
+    
+    // 当前渲染状态 (Current) - 每一帧追赶目标
+    let currentCamRot = { x: -0.4, y: 0.8 };
+    let currentFocus = new Vec3(0, 0, 0);
+
+    // 陀螺仪偏移量 (独立平滑)
+    let gyroOffset = { x: 0, y: 0 };
+    
+    // 实际用于投影的相机对象
+    let camera = {
+        angleX: -0.4, angleY: 0.8,
+        zoom: 25, dist: 1200, focus: new Vec3(0,0,0)
+    };
+
+    // --- 陀螺仪逻辑 ---
+    let isGyroEnabled = false;
+    let initialGyroData = null;
+    const gyroStatusLabel = document.getElementById('gyro-status');
+    const gyroCheckbox = document.getElementById('use-gyro');
+
+    function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
+    let targetGyroX = 0, targetGyroY = 0;
+
+    function handleOrientation(event) {
+        if (!initialGyroData) {
+            initialGyroData = { beta: event.beta, gamma: event.gamma };
+            return;
+        }
+        let deltaBeta = event.beta - initialGyroData.beta;
+        let deltaGamma = event.gamma - initialGyroData.gamma;
+        targetGyroX = deltaBeta * 0.02;  
+        targetGyroY = deltaGamma * 0.02; 
+    }
+
+    function requestGyroPermission() {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        isGyroEnabled = true;
+                        gyroStatusLabel.innerText = "(已激活)";
+                        gyroStatusLabel.style.color = "#4f4";
+                    } else {
+                        gyroStatusLabel.innerText = "(被拒绝)";
+                        gyroStatusLabel.style.color = "#f44";
+                        gyroCheckbox.checked = false;
+                    }
+                })
+                .catch(console.error);
+        } else {
+            window.addEventListener('deviceorientation', handleOrientation);
+            isGyroEnabled = true;
+            gyroStatusLabel.innerText = "(已激活)";
+            gyroStatusLabel.style.color = "#4f4";
+        }
+    }
+
+    gyroCheckbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            if (!isGyroEnabled) requestGyroPermission();
+            else initialGyroData = null;
+        } else {
+            targetGyroX = 0; targetGyroY = 0;
+            gyroOffset.x = 0; gyroOffset.y = 0;
+        }
+    });
+
+    // --- 物理计算 ---
+    function getAcc(pos, vel) {
+        let vxb = vel.cross(p.B);
+        let F = p.E.add(vxb).mul(p.q);
+        return F.mul(1 / p.m);
+    }
+    function rk4Step() {
+        let v = p.vel, x = p.pos, dt = TIME_STEP;
+        let a1 = getAcc(x, v);
+        let x2 = x.add(v.mul(dt * 0.5)), v2 = v.add(a1.mul(dt * 0.5));
+        let a2 = getAcc(x2, v2);
+        let x3 = x.add(v2.mul(dt * 0.5)), v3 = v.add(a2.mul(dt * 0.5));
+        let a3 = getAcc(x3, v3);
+        let x4 = x.add(v3.mul(dt)), v4 = v.add(a3.mul(dt));
+        let a4 = getAcc(x4, v4);
+        p.vel = p.vel.add(a1.add(a2.mul(2)).add(a3.mul(2)).add(a4).mul(dt / 6));
+        p.pos = p.pos.add(v.add(v2.mul(2)).add(v3.mul(2)).add(v4).mul(dt / 6));
+        trail.push(p.pos.clone());
+        if (trail.length > MAX_TRAIL_POINTS) trail.shift();
+    }
+
+    // --- 渲染 ---
+    function project(v3) {
+        let x = v3.x - camera.focus.x;
+        let y = v3.y - camera.focus.y;
+        let z = v3.z - camera.focus.z;
+        let cy = Math.cos(camera.angleY), sy = Math.sin(camera.angleY);
+        let x1 = x * cy - z * sy;
+        let z1 = x * sy + z * cy;
+        let cx = Math.cos(camera.angleX), sx = Math.sin(camera.angleX);
+        let y2 = y * cx - z1 * sx;
+        let z2 = y * sx + z1 * cx;
+        if (z2 > camera.dist) return { visible: false };
+        let scale = camera.dist / (camera.dist - z2);
+        return { x: width/2 + x1 * camera.zoom * scale, y: height/2 - y2 * camera.zoom * scale, scale: scale, visible: true };
+    }
+
+    function drawLine(v1, v2, color, width=1, dash=false) {
+        let p1 = project(v1), p2 = project(v2); if(!p1.visible || !p2.visible) return;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = color; ctx.lineWidth = width * p1.scale;
+        if(dash) ctx.setLineDash([4, 4]); else ctx.setLineDash([]);
+        ctx.stroke(); ctx.setLineDash([]);
+    }
+    function drawText(text, v, color) { let p = project(v); if(!p.visible) return; ctx.fillStyle = color; ctx.font = "bold 12px Arial"; ctx.fillText(text, p.x+5, p.y-5); }
+    function drawBall(v, r, color) {
+        let p = project(v); if(!p.visible) return;
+        let rad = Math.max(1.5, r * camera.zoom * p.scale);
+        ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI*2);
+        ctx.fillStyle = color; ctx.shadowBlur = 10; ctx.shadowColor = color; ctx.fill(); ctx.shadowBlur = 0;
+    }
+
+    function drawInfiniteGrid() {
+        let gridSize = 10; let range = 8;
+        let basePathX = Math.floor(camera.focus.x / gridSize) * gridSize;
+        let basePathZ = Math.floor(camera.focus.z / gridSize) * gridSize;
+        for(let i = -range; i <= range; i++) {
+            let x = basePathX + i * gridSize; let z = basePathZ + i * gridSize;
+            let alpha = 1 - (Math.abs(i) / range);
+            let color = `rgba(80, 80, 100, ${alpha * 0.3})`;
+            let axisColor = `rgba(200, 200, 200, ${alpha * 0.6})`;
+            drawLine(new Vec3(basePathX - range*gridSize, 0, z), new Vec3(basePathX + range*gridSize, 0, z), (Math.abs(z)<0.1)?axisColor:color);
+            drawLine(new Vec3(x, 0, basePathZ - range*gridSize), new Vec3(x, 0, basePathZ + range*gridSize), (Math.abs(x)<0.1)?axisColor:color);
+        }
+    }
+
+    function showToast(msg) {
+        const t = document.getElementById('toast-msg');
+        t.innerText = msg;
+        t.style.opacity = 1;
+        setTimeout(() => t.style.opacity = 0, 2000);
+    }
+
+    function loop() {
+        if (width !== window.innerWidth || height !== window.innerHeight) { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; }
+        ctx.fillStyle = "#050508"; ctx.fillRect(0, 0, width, height);
+
+        if(isRunning) for(let i=0; i<SIM_SPEED; i++) rk4Step();
+
+        // --- 核心修改：平滑相机逻辑 ---
+        
+        // 1. 处理跟随模式的逻辑覆盖
+        if(cameraMode === 'follow') {
+            // 跟随模式下，目标焦点强制设为粒子位置
+            // 这里使用一个更快的插值让跟随更紧密，但仍有一点点延迟感显得更自然
+            targetFocus.x = p.pos.x;
+            targetFocus.y = p.pos.y;
+            targetFocus.z = p.pos.z;
+        }
+
+        // 2. 惯性平滑处理 (Lerp)
+        // 旋转平滑系数 0.08 (数值越小越平滑/越慢)
+        currentCamRot.x = lerp(currentCamRot.x, targetCamRot.x, 0.08);
+        currentCamRot.y = lerp(currentCamRot.y, targetCamRot.y, 0.08);
+
+        // 平移焦点平滑
+        currentFocus.x = lerp(currentFocus.x, targetFocus.x, 0.01);
+        currentFocus.y = lerp(currentFocus.y, targetFocus.y, 0.01);
+        currentFocus.z = lerp(currentFocus.z, targetFocus.z, 0.01);
+
+        // 3. 陀螺仪平滑
+        if (gyroCheckbox.checked) {
+            gyroOffset.x = lerp(gyroOffset.x, targetGyroX, 0.1);
+            gyroOffset.y = lerp(gyroOffset.y, targetGyroY, 0.1);
+        } else {
+            gyroOffset.x = lerp(gyroOffset.x, 0, 0.1);
+            gyroOffset.y = lerp(gyroOffset.y, 0, 0.1);
+        }
+        
+        // 4. 应用最终结果到相机
+        // 注意：陀螺仪叠加在平滑后的鼠标旋转之上
+        camera.angleX = currentCamRot.x + gyroOffset.x;
+        camera.angleY = currentCamRot.y + gyroOffset.y;
+        camera.focus = currentFocus;
+
+        // 限制俯仰角 (防止万向节死锁或颠倒)
+        // 限制的是 targetCamRot，防止用户一直拖动导致累积数值过大
+        // 但这里我们限制计算后的结果用于渲染
+        camera.angleX = Math.max(-1.5, Math.min(1.5, camera.angleX));
+
+        // --- 绘图 ---
+        drawInfiniteGrid();
+        drawLine(new Vec3(0,0,0), new Vec3(5,0,0), "rgba(200,50,50,0.5)", 1, true);
+        drawLine(new Vec3(0,0,0), new Vec3(0,5,0), "rgba(50,200,50,0.5)", 1, true);
+        drawLine(new Vec3(0,0,0), new Vec3(0,0,5), "rgba(50,50,200,0.5)", 1, true);
+
+        if(document.getElementById('show-trail').checked && trail.length > 1) {
+            ctx.strokeStyle = "#4facfe"; ctx.lineWidth = 2; ctx.shadowBlur = 8; ctx.shadowColor = "#00f2fe"; ctx.beginPath();
+            let pStart = project(trail[0]); if(pStart.visible) ctx.moveTo(pStart.x, pStart.y);
+            for(let i=1; i<trail.length; i++) { let pt = project(trail[i]); if(pt.visible) ctx.lineTo(pt.x, pt.y); }
+            ctx.stroke(); ctx.shadowBlur = 0;
+        }
+
+        drawBall(p.pos, 0.4, "#fff");
+        let axisLen = 1.5;
+        drawLine(p.pos, p.pos.add(new Vec3(axisLen,0,0)), "#f44", 2);
+        drawLine(p.pos, p.pos.add(new Vec3(0,axisLen,0)), "#4f4", 2);
+        drawLine(p.pos, p.pos.add(new Vec3(0,0,axisLen)), "#44f", 2);
+
+        if(p.B.length() > 0.01) { let BEnd = p.B.mul(4); drawLine(new Vec3(0,0,0), BEnd, "#00f2fe", 2); drawText("B", BEnd, "#00f2fe"); }
+        if(p.E.length() > 0.01) { let EEnd = p.E.mul(4); drawLine(new Vec3(0,0,0), EEnd, "#ff4466", 2); drawText("E", EEnd, "#ff4466"); }
+
+        requestAnimationFrame(loop);
+    }
+
+    // --- 触控/鼠标 交互 ---
+    let isDragging = false;
+    let dragMode = 'rotate'; 
+    let lastMouse = {x:0, y:0};
+    let initialPinch = null; 
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    canvas.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+            isDragging = true; 
+            dragMode = 'rotate';
+            lastMouse = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+        } else if (e.touches.length === 2) {
+            isDragging = true;
+            dragMode = 'pan'; 
+            
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const dx = t1.clientX - t2.clientX;
+            const dy = t1.clientY - t2.clientY;
+            
+            initialPinch = {
+                dist: Math.sqrt(dx*dx + dy*dy),
+                center: {
+                    x: (t1.clientX + t2.clientX) / 2,
+                    y: (t1.clientY + t2.clientY) / 2
+                }
+            };
+            lastMouse = initialPinch.center; 
+            e.preventDefault();
+        }
+    }, {passive: false});
+
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (e.touches.length === 1 && isDragging && dragMode === 'rotate') {
+            handleRotate(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (e.touches.length === 2 && initialPinch) {
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            
+            const dx = t1.clientX - t2.clientX;
+            const dy = t1.clientY - t2.clientY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const diff = dist - initialPinch.dist;
+            
+            camera.zoom += diff * 0.1; 
+            camera.zoom = Math.max(5, Math.min(200, camera.zoom));
+            initialPinch.dist = dist; 
+
+            const currentCenter = {
+                x: (t1.clientX + t2.clientX) / 2,
+                y: (t1.clientY + t2.clientY) / 2
+            };
+            
+            handlePan(currentCenter.x, currentCenter.y);
+            lastMouse = currentCenter; 
+        }
+    }, {passive: false});
+
+    canvas.addEventListener('touchend', () => { isDragging = false; initialPinch = null; dragMode = 'rotate'; });
+
+    canvas.addEventListener('mousedown', e => { 
+        isDragging = true; 
+        lastMouse = {x:e.clientX, y:e.clientY};
+        dragMode = (e.button === 2) ? 'pan' : 'rotate';
+    });
+
+    window.addEventListener('mouseup', () => isDragging = false);
+
+    canvas.addEventListener('mousemove', e => { 
+        if(!isDragging) return;
+        if(dragMode === 'rotate') {
+            handleRotate(e.clientX, e.clientY);
+        } else if (dragMode === 'pan') {
+            handlePan(e.clientX, e.clientY);
+        }
+    });
+
+    canvas.addEventListener('wheel', e => { 
+        camera.zoom *= (e.deltaY > 0 ? 0.9 : 1.1); 
+    }, {passive: true});
+
+    // --- 核心交互逻辑 (更新) ---
+
+    // 旋转：只更新 Target，让 Loop 去平滑
+    function handleRotate(x, y) {
+        let dx = (x - lastMouse.x) * 0.005;
+        let dy = (y - lastMouse.y) * 0.005;
+        targetCamRot.y += dx; 
+        targetCamRot.x += dy; 
+        // 限制目标值，防止用户拖太远
+        targetCamRot.x = Math.max(-1.5, Math.min(1.5, targetCamRot.x));
+        lastMouse = {x:x, y:y};
+    }
+
+    // 平移：只更新 Target Focus
+    function handlePan(x, y) {
+        // 拦截逻辑：跟随模式不允许平移
+        if (cameraMode === 'follow') {
+            showToast("跟随模式下无法平移视角");
+            // 即使在拖动，也更新lastMouse防止切换模式后跳变
+            lastMouse = {x:x, y:y};
+            return;
+        }
+
+        let dx = (x - lastMouse.x);
+        let dy = (y - lastMouse.y);
+        
+        const sensitivity = 3 / camera.zoom; 
+
+        // 使用当前的平滑角度来计算方向，保证直观
+        const cy = Math.cos(camera.angleY);
+        const sy = Math.sin(camera.angleY);
+        const cx = Math.cos(camera.angleX);
+        const sx = Math.sin(camera.angleX);
+
+        // 更新 Target Focus
+        targetFocus.x -= (dx * cy - dy * sy * sx) * sensitivity;
+        targetFocus.y += (dy * cx) * sensitivity;
+        targetFocus.z += (dx * sy + dy * cy * sx) * sensitivity;
+
+        lastMouse = {x:x, y:y};
+    }
+
+    // --- 数据同步 ---
+    function updateParams() {
+        p.q = parseFloat(document.getElementById('q').value) || 0;
+        p.m = parseFloat(document.getElementById('m').value) || 1;
+        p.B = new Vec3(parseFloat(document.getElementById('bx').value)||0, parseFloat(document.getElementById('by').value)||0, parseFloat(document.getElementById('bz').value)||0);
+        p.E = new Vec3(parseFloat(document.getElementById('ex').value)||0, parseFloat(document.getElementById('ey').value)||0, parseFloat(document.getElementById('ez').value)||0);
+    }
+    document.querySelectorAll('input').forEach(el => el.addEventListener('input', updateParams));
+    
+    // 切换相机模式时，同步一下 Target 和 Current，防止瞬间跳变
+    window.updateCamMode = () => { 
+        document.getElementsByName('cam').forEach(r => { 
+            if(r.checked) {
+                cameraMode = r.value; 
+                if(cameraMode === 'follow') {
+                    showToast("已切换至跟随模式");
+                } else {
+                    // 从跟随切换回固定时，保持当前视角位置
+                    targetFocus = currentFocus.clone();
+                    showToast("已切换至固定视角");
+                }
+            }
+        }); 
+    };
+    
+    // UI 折叠
+    const controls = document.getElementById('controls');
+    const panelContent = document.getElementById('panel-content');
+    const toggleBtn = document.getElementById('toggle-panel-btn');
+    const miniStartBtn = document.getElementById('mini-start-btn');
+    let isCollapsed = false; const isMobile = window.innerWidth < 768;
+
+    function togglePanel() {
+        isCollapsed = !isCollapsed;
+        if(isCollapsed) {
+            panelContent.classList.add('hidden'); controls.classList.add('minimized'); toggleBtn.innerText = "+";
+            if(window.innerWidth < 768) document.getElementById('watermark').style.bottom = "80px";
+        } else {
+            panelContent.classList.remove('hidden'); controls.classList.remove('minimized'); toggleBtn.innerText = "−";
+            if(window.innerWidth < 768) document.getElementById('watermark').style.bottom = "65vh";
+        }
+    }
+    toggleBtn.addEventListener('click', togglePanel);
+    if(isMobile) togglePanel();
+
+    const btnToggle = document.getElementById('btn-toggle');
+    function toggleSimulation() {
+        isRunning = !isRunning;
+        const text = isRunning ? "暂停仿真" : "继续仿真";
+        btnToggle.innerText = text; miniStartBtn.innerText = text;
+        if(isRunning && trail.length === 0) p.vel = new Vec3(parseFloat(document.getElementById('vx').value)||0, parseFloat(document.getElementById('vy').value)||0, parseFloat(document.getElementById('vz').value)||0);
+        updateParams();
+    }
+    btnToggle.onclick = toggleSimulation; miniStartBtn.onclick = toggleSimulation;
+
+    document.getElementById('btn-reset').onclick = () => {
+        isRunning = false; btnToggle.innerText = "启动仿真"; miniStartBtn.innerText = "启动仿真";
+        p.pos = new Vec3(0,0,0); trail = []; 
+        
+        // 重置时也将相机焦点复位，或者您可以选择不复位相机
+        // targetFocus = new Vec3(0,0,0); 
+        
+        p.vel = new Vec3(parseFloat(document.getElementById('vx').value)||0, parseFloat(document.getElementById('vy').value)||0, parseFloat(document.getElementById('vz').value)||0);
+        updateParams(); ctx.fillStyle = "#050508"; ctx.fillRect(0, 0, width, height); drawBall(new Vec3(0,0,0), 0.4, "#fff");
+    };
+
+    updateParams(); loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>电磁感应仿真 - 移动端适配版</title>
+    
+    <script src="https://cdn.staticfile.org/Chart.js/3.9.1/chart.min.js" 
+            onerror="this.onerror=null; this.src='https://lib.baomitu.com/Chart.js/3.9.1/chart.min.js'; console.log('Switching Chart.js to backup 1');"
+            onload="if(!window.Chart && this.src.includes('baomitu')) { this.src='https://npm.elemecdn.com/chart.js@3.9.1/dist/chart.min.js'; }"></script>
+            
+    <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      svg: { fontCache: 'global' }
+    };
+    </script>
+    
+    <script id="MathJax-script" async 
+            src="https://cdn.staticfile.org/mathjax/3.2.2/es5/tex-mml-chtml.js"
+            onerror="this.onerror=null; this.src='https://lib.baomitu.com/mathjax/3.2.2/es5/tex-mml-chtml.js'; console.log('Switching MathJax to backup 1');">
+    </script>
+    
+    <style>
+        :root {
+            --primary-color: #2196F3;
+            --bg-color: #f2f4f8;
+            --panel-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #dee2e6;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent; /* 移除点击高亮 */
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            height: 100vh;
+            overflow: hidden;
+            position: relative; /* 为绝对定位元素提供基准 */
+        }
+
+        /* --- 左侧控制面板 (桌面端样式) --- */
+        .controls-panel {
+            width: 260px;
+            background-color: var(--panel-bg);
+            padding: 10px;
+            overflow-y: auto;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.03);
+            z-index: 20;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 移动端遮罩层 */
+        .panel-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 15;
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* 移动端菜单按钮 */
+        .mobile-menu-btn {
+            display: none; /* 桌面端隐藏 */
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 12; /* 高于 display-area 但低于 panel */
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* 面板内部关闭按钮 (仅移动端显示) */
+        .panel-close-btn {
+            display: none;
+            background: #f1f3f5;
+            border: none;
+            padding: 8px;
+            text-align: center;
+            border-radius: 4px;
+            color: #666;
+            font-weight: bold;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+
+        .control-group {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        .control-group h3 {
+            margin: 0 0 8px 0;
+            font-size: 0.9rem;
+            color: #495057;
+            font-weight: 700;
+            border-left: 3px solid var(--primary-color);
+            padding-left: 8px;
+        }
+
+        .input-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        
+        .input-row label { font-size: 0.85rem; color: #666; }
+
+        input[type="number"] {
+            width: 60px;
+            padding: 4px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            text-align: right;
+            font-size: 0.9rem;
+            /* 移动端防止输入框缩放 */
+            font-size: 16px; 
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        button {
+            padding: 10px 0; /* 增加点击区域 */
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            color: white;
+            font-size: 0.95rem;
+        }
+        .btn-start { background-color: #28a745; }
+        .btn-pause { background-color: #ffc107; color: #333; }
+        .btn-reset { background-color: #dc3545; }
+
+        .formula-box {
+            font-size: 0.8rem;
+            color: #666;
+            background: #fff;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: auto;
+            border: 1px solid #e9ecef;
+            line-height: 1.5;
+        }
+
+        /* --- 右侧显示区 --- */
+        .display-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            width: 100%; /* 确保在移动端占满宽度 */
+        }
+
+        .canvas-container {
+            flex: 0.6; /* 默认比例 */
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            position: relative;
+            min-height: 200px; /* 保证最小高度 */
+            border: 1px solid #e0e0e0;
+        }
+
+        canvas#simCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .data-overlay {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.92);
+            padding: 8px 10px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            font-family: Consolas, monospace;
+            font-size: 11px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            pointer-events: none;
+            color: #333;
+            max-width: 120px;
+        }
+
+        .charts-container {
+            flex: 1; 
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 8px;
+            min-height: 0;
+            overflow-y: auto; /* 允许图表区内部滚动（如果需要） */
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 100%;
+            width: 100%;
+            background: white;
+            border-radius: 6px;
+            padding: 5px; 
+            border: 1px solid #e0e0e0;
+            box-sizing: border-box;
+            min-height: 120px; /* 图表最小高度 */
+        }
+
+        /* --- 移动端适配 (断点：768px) --- */
+        @media (max-width: 768px) {
+            .mobile-menu-btn { display: block; }
+            .panel-close-btn { display: block; }
+
+            .controls-panel {
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 85%; /* 抽屉宽度 */
+                max-width: 320px;
+                transform: translateX(-100%); /* 默认隐藏到左侧 */
+                box-shadow: none; /* 隐藏时去掉阴影 */
+            }
+
+            .controls-panel.active {
+                transform: translateX(0); /* 滑出 */
+                box-shadow: 4px 0 15px rgba(0,0,0,0.2);
+            }
+
+            .panel-overlay.active {
+                display: block;
+                opacity: 1;
+            }
+
+            /* 移动端布局调整 */
+            .display-area {
+                padding: 5px;
+                gap: 5px;
+            }
+            
+            .canvas-container {
+                flex: 0 0 auto; /* 不自动伸缩 */
+                height: 40vh; /* 固定占据屏幕40%高度 */
+                min-height: 220px;
+            }
+
+            .data-overlay {
+                font-size: 10px;
+                padding: 6px;
+                top: 40px; /* 避开左上角的设置按钮 */
+                right: 5px;
+            }
+
+            .charts-container {
+                flex: 1;
+                /* 竖屏时改为单列布局，横屏时保持双列 */
+                grid-template-columns: 1fr; 
+                grid-template-rows: repeat(4, 1fr);
+                gap: 6px;
+            }
+
+            .chart-wrapper {
+                min-height: 0; /* 允许被压缩 */
+            }
+        }
+        
+        /* 横屏模式特别优化 */
+        @media (max-width: 900px) and (orientation: landscape) {
+            .canvas-container { height: 100%; flex: 1; }
+            .charts-container { display: none; /* 手机横屏时空间太小，暂时隐藏图表，专注看仿真 */ }
+            /* 或者你可以选择把图表放在右侧，但手机横屏高度不够 */
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <div class="panel-overlay" id="panelOverlay" onclick="togglePanel()"></div>
+
+    <button class="mobile-menu-btn" onclick="togglePanel()">⚙️ 参数设置</button>
+
+    <div class="controls-panel" id="controlsPanel">
+        <button class="panel-close-btn" onclick="togglePanel()">收起面板 ✕</button>
+        
+        <div class="btn-group">
+            <button class="btn-start" onclick="sim.start(); togglePanel(false);">开始</button>
+            <button class="btn-pause" onclick="sim.pause()">暂停</button>
+            <button class="btn-reset" onclick="sim.reset()" style="grid-column: span 2;">重置</button>
+        </div>
+
+        <div class="control-group">
+            <h3>环境参数</h3>
+            <div class="input-row"><label>磁感应强度 B (T)</label><input type="number" id="param_B" value="1.0" step="0.1" onchange="sim.updateParams()"></div>
+            <div class="input-row"><label>导轨间距 L (m)</label><input type="number" id="param_L" value="1.0" step="0.1" onchange="sim.updateParams()"></div>
+        </div>
+
+        <div class="control-group">
+            <h3>电路参数</h3>
+            <div class="input-row"><label>外电阻 R (Ω)</label><input type="number" id="param_R" value="2.0" step="0.1" onchange="sim.updateParams()"></div>
+            <div class="input-row"><label>棒内阻 r (Ω)</label><input type="number" id="param_r" value="0.5" step="0.1" onchange="sim.updateParams()"></div>
+            <div class="input-row"><label>电源电压 U (V)</label><input type="number" id="param_U" value="1.0" step="0.1" onchange="sim.updateParams()"></div>
+        </div>
+
+        <div class="control-group">
+            <h3>动力学参数</h3>
+            <div class="input-row"><label>恒外力 F (N)</label><input type="number" id="param_F" value="2.0" step="0.1" onchange="sim.updateParams()"></div>
+            <div class="input-row"><label>棒质量 m (kg)</label><input type="number" id="param_m" value="1.0" step="0.1" onchange="sim.updateParams()"></div>
+            <div class="input-row"><label>初速度 v0 (m/s)</label><input type="number" id="param_v0" value="0.0" step="0.1" onchange="sim.updateParams()"></div>
+        </div>
+
+        <div class="formula-box">
+            <div style="font-weight:bold; margin-bottom:4px">核心公式:</div>
+            <div>$E_{感} = BLv$</div>
+            <div>$I_{棒} = \frac{E_{感} - U}{R+r}$</div>
+            <div>$F_{安} = BI_{棒}L$</div>
+            <div>$a = \frac{F_{外} - F_{安}}{m}$</div>
+        </div>
+    </div>
+
+    <div class="display-area">
+        <div class="canvas-container">
+            <canvas id="simCanvas"></canvas>
+            <div class="data-overlay">
+                <div>t = <span id="val_t">0.00</span> s</div>
+                <div>x = <span id="val_x">0.00</span> m</div>
+                <div>v = <span id="val_v" style="color:#28a745">0.00</span> m/s</div>
+                <div>a = <span id="val_a" style="color:#dc3545">0.00</span> m/s²</div>
+                <div>I = <span id="val_I" style="color:#6f42c1">0.00</span> A</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-wrapper"><canvas id="chart_v"></canvas></div>
+            <div class="chart-wrapper"><canvas id="chart_x"></canvas></div>
+            <div class="chart-wrapper"><canvas id="chart_a"></canvas></div>
+            <div class="chart-wrapper"><canvas id="chart_I"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- 移动端面板控制逻辑 ---
+function togglePanel(forceState) {
+    const panel = document.getElementById('controlsPanel');
+    const overlay = document.getElementById('panelOverlay');
+    
+    const isOpen = panel.classList.contains('active');
+    const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+
+    if (shouldOpen) {
+        panel.classList.add('active');
+        overlay.classList.add('active');
+    } else {
+        panel.classList.remove('active');
+        overlay.classList.remove('active');
+    }
+}
+
+// --- 物理引擎 ---
+class PhysicsEngine {
+    constructor() { this.reset(); }
+    reset() {
+        this.t = 0; this.x = 0; this.a = 0; this.I = 0;
+        this.v = parseFloat(document.getElementById('param_v0').value) || 0;
+        this.history = { t: [], x: [], v: [], a: [], I: [] };
+        this.updateParams();
+    }
+    updateParams() {
+        this.params = {
+            B: parseFloat(document.getElementById('param_B').value),
+            L: parseFloat(document.getElementById('param_L').value),
+            R: parseFloat(document.getElementById('param_R').value),
+            r: parseFloat(document.getElementById('param_r').value),
+            U: parseFloat(document.getElementById('param_U').value),
+            F: parseFloat(document.getElementById('param_F').value),
+            m: parseFloat(document.getElementById('param_m').value),
+            dt: 0.02
+        };
+    }
+    step() {
+        const p = this.params;
+        const E_induced = p.B * p.L * this.v;
+        const R_total = p.R + p.r;
+        this.I = R_total > 1e-9 ? (E_induced - p.U) / R_total : 0;
+        const F_amp = p.B * this.I * p.L;
+        this.a = (p.F - F_amp) / p.m;
+        this.v += this.a * p.dt;
+        this.x += this.v * p.dt;
+        this.t += p.dt;
+        if (this.history.t.length > 600) { ['t','x','v','a','I'].forEach(k => this.history[k].shift()); }
+        ['t','x','v','a','I'].forEach(k => this.history[k].push(this[k]));
+    }
+}
+
+class Renderer {
+    constructor(canvasId) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext('2d');
+        this.colors = {
+            wire: "#1565C0", rail: "#546E7A", rod: ["#FF7043", "#D84315"],
+            forceF: "#FF5722", forceAmp: "#6f42c1", velocity: "#28a745", 
+            bField: "rgba(111, 66, 193, 0.08)", bText: "#BA68C8"
+        };
+        this.resize();
+        window.addEventListener('resize', () => { this.resize(); if(window.sim) window.sim.redraw(); });
+    }
+
+    resize() {
+        const p = this.canvas.parentElement;
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = p.clientWidth * dpr; this.canvas.height = p.clientHeight * dpr;
+        this.ctx.scale(dpr, dpr); this.width = p.clientWidth; this.height = p.clientHeight;
+    }
+
+    draw(state, params) {
+        const ctx = this.ctx; const w = this.width, h = this.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const railGap = Math.min(h * 0.5, 160);
+        const railY_top = (h - railGap) / 2;
+        const railY_bottom = railY_top + railGap;
+        
+        // 移动端视口较窄，调整导轨起始位置
+        const isMobile = w < 600;
+        const railStartX = isMobile ? 120 : 240; 
+        const railEndX = w - (isMobile ? 10 : 20);
+        
+        const pixelsPerMeter = 80;
+        let rodX = railStartX + 50 + state.x * pixelsPerMeter;
+        let scrollOffset = 0;
+        const maxRodViewX = w * (isMobile ? 0.85 : 0.8);
+        if (rodX > maxRodViewX) { scrollOffset = rodX - maxRodViewX; rodX = maxRodViewX; }
+
+        // 1. 磁场
+        ctx.fillStyle = this.colors.bField;
+        ctx.fillRect(railStartX, railY_top - 15, railEndX - railStartX, railGap + 30);
+        
+        ctx.fillStyle = this.colors.bText; 
+        ctx.font = "14px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        const gridSize = 60;
+        for (let x = railStartX + gridSize/2; x < railEndX; x += gridSize) {
+            for (let y = railY_top + 20; y < railY_bottom; y += gridSize) {
+                const drawX = x - (scrollOffset % gridSize);
+                if (drawX > railStartX && drawX < railEndX) ctx.fillText("×", drawX, y);
+            }
+        }
+
+        // 2. 导轨
+        ctx.beginPath(); ctx.strokeStyle = this.colors.rail; ctx.lineWidth = 6; ctx.lineCap = "round";
+        ctx.moveTo(railStartX, railY_top); ctx.lineTo(railEndX, railY_top);
+        ctx.moveTo(railStartX, railY_bottom); ctx.lineTo(railEndX, railY_bottom);
+        ctx.stroke();
+
+        // 3. 电路
+        const circuitJunctionX = railStartX - 30;
+        const branchResistor_X = circuitJunctionX - (isMobile ? 30 : 50); 
+        const branchBattery_X = circuitJunctionX - (isMobile ? 60 : 110); 
+        const centerY = railY_top + railGap / 2;
+
+        ctx.beginPath(); ctx.strokeStyle = this.colors.wire; ctx.lineWidth = 3; ctx.lineJoin = "round";
+        ctx.moveTo(railStartX, railY_top); ctx.lineTo(branchBattery_X, railY_top);
+        ctx.moveTo(railStartX, railY_bottom); ctx.lineTo(branchBattery_X, railY_bottom);
+        ctx.moveTo(branchResistor_X, railY_top); ctx.lineTo(branchResistor_X, railY_bottom);
+        ctx.moveTo(branchBattery_X, railY_top); ctx.lineTo(branchBattery_X, railY_bottom);
+        ctx.stroke();
+
+        ctx.fillStyle = this.colors.wire;
+        [circuitJunctionX, branchResistor_X, branchBattery_X].forEach(x => {
+            this.drawDot(ctx, x, railY_top); this.drawDot(ctx, x, railY_bottom);
+        });
+
+        // 4. 元件
+        ctx.clearRect(branchResistor_X - 12, centerY - 20, 24, 40);
+        this.drawResistorBox(ctx, branchResistor_X, centerY, params.R);
+        ctx.clearRect(branchBattery_X - 15, centerY - 15, 30, 30);
+        this.drawBatterySymbol(ctx, branchBattery_X, centerY, params.U);
+
+        // 5. 导体棒
+        const rodW = 16, rodH = railGap + 20;
+        const grad = ctx.createLinearGradient(rodX - rodW/2, 0, rodX + rodW/2, 0);
+        grad.addColorStop(0, this.colors.rod[0]); grad.addColorStop(0.5, this.colors.rod[1]); grad.addColorStop(1, this.colors.rod[0]);
+        ctx.fillStyle = grad; 
+        ctx.shadowBlur = 5; ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowOffsetY = 2;
+        ctx.fillRect(rodX - rodW/2, railY_top - 10, rodW, rodH);
+        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        
+        ctx.fillStyle = "#333"; ctx.textAlign = "center"; ctx.font = "12px Arial";
+        ctx.fillText("导体棒", rodX, railY_top - 18);
+        ctx.font = "10px Arial"; ctx.fillText(`r=${params.r}Ω`, rodX, railY_bottom + 15);
+
+        // 6. 矢量
+        if (params.F > 0.01) this.drawArrow(ctx, rodX + rodW/2 + 5, centerY, params.F * 40, this.colors.forceF, "F外");
+        if (Math.abs(state.v) > 0.01) this.drawArrow(ctx, rodX, railY_top - 35, state.v * 30, this.colors.velocity, "v");
+        const F_amp_val = params.B * state.I * params.L;
+        if (Math.abs(F_amp_val) > 0.01) this.drawArrow(ctx, rodX - rodW/2 - 5, centerY + 25, -F_amp_val * 40, this.colors.forceAmp, "F安");
+
+        // 7. 水印
+        ctx.save();
+        ctx.font = "italic 11px 'Microsoft YaHei', sans-serif";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "bottom";
+        const wmText = isMobile ? "公众号: 戈悟志理琢瑷成器" : "南阳一中 张铭戈  公众号: 戈悟志理琢瑷成器";
+        ctx.fillText(wmText, w - 8, h - 5);
+        ctx.restore();
+    }
+
+    drawDot(ctx, x, y) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill(); }
+    drawResistorBox(ctx, x, y, val) {
+        const w = 20; const h = 40;
+        ctx.fillStyle = "#fff"; ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+        ctx.fillRect(x - w/2, y - h/2, w, h);
+        ctx.strokeRect(x - w/2, y - h/2, w, h);
+        ctx.fillStyle = "#333"; ctx.textAlign = "center"; ctx.font = "11px Arial";
+        ctx.fillText(`R=${val}`, x - 22, y);
+    }
+    drawBatterySymbol(ctx, x, y, val) {
+        ctx.beginPath(); ctx.strokeStyle = "#333";
+        ctx.lineWidth = 2; ctx.moveTo(x - 10, y - 5); ctx.lineTo(x + 10, y - 5);
+        ctx.lineWidth = 3; ctx.moveTo(x - 6, y + 5); ctx.lineTo(x + 6, y + 5);
+        ctx.stroke();
+        ctx.font = "12px Arial"; ctx.fillStyle = "#333"; ctx.textAlign = "center";
+        ctx.fillText("+", x + 15, y - 4); 
+        ctx.font = "11px Arial"; ctx.fillText(`U=${val}`, x - 25, y);
+    }
+    drawArrow(ctx, x, y, length, color, label) {
+        const maxLength = 80; // 移动端减小最大长度
+        let drawLen = Math.sign(length) * Math.min(Math.abs(length), maxLength);
+        if (Math.abs(drawLen) < 8) return;
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2;
+        ctx.moveTo(x, y); ctx.lineTo(x + drawLen, y); ctx.stroke();
+        ctx.beginPath();
+        const headSize = 8; const dir = Math.sign(drawLen); const endX = x + drawLen;
+        ctx.moveTo(endX + dir * 2, y);
+        ctx.lineTo(endX - dir * headSize, y - headSize*0.6);
+        ctx.lineTo(endX - dir * headSize, y + headSize*0.6);
+        ctx.fill();
+        ctx.textAlign = dir > 0 ? "left" : "right"; ctx.font = "12px Arial";
+        ctx.fillText(label, endX + dir * 8, y + 4);
+    }
+}
+
+class SimulationApp {
+    constructor() {
+        this.physics = new PhysicsEngine();
+        this.renderer = new Renderer('simCanvas');
+        this.isRunning = false;
+        // 等待Chartjs加载完成后再初始化图表
+        this.waitForChart();
+    }
+    
+    waitForChart() {
+        if (typeof Chart !== 'undefined') {
+            this.initCharts();
+            this.redraw();
+            this.updateUI();
+            window.sim = this;
+        } else {
+            // 如果库还没加载完，每100ms检查一次
+            setTimeout(() => this.waitForChart(), 100);
+        }
+    }
+    
+    initCharts() {
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            layout: { padding: { left: 0, right: 10, top: 15, bottom: 0 } },
+            elements: { point: { radius: 0 }, line: { borderWidth: 2, tension: 0.3 } },
+            scales: { 
+                x: { display: true, ticks: { maxTicksLimit: 5, color: '#999', font:{size:10} }, grid: { display: false } },
+                y: { ticks: { color: '#999', font:{size:10} }, grid: { color: '#f1f1f1' } }
+            },
+            plugins: {
+                legend: { display: false },
+                title: { display: true, color: '#555', font: {size: 11, weight:'bold'}, padding: {bottom: 2} }
+            }
+        };
+
+        const mkChart = (id, title, color) => {
+            const opts = JSON.parse(JSON.stringify(commonOptions));
+            opts.plugins.title.text = title;
+            return new Chart(document.getElementById(id).getContext('2d'), {
+                type: 'line',
+                data: { labels: [], datasets: [{ data: [], borderColor: color, borderWidth: 2, fill: false }] },
+                options: opts
+            });
+        };
+
+        this.charts = {
+            v: mkChart('chart_v', '速度 v (m/s)', '#28a745'),
+            x: mkChart('chart_x', '位移 x (m)', '#007bff'),
+            a: mkChart('chart_a', '加速度 a (m/s²)', '#dc3545'),
+            I: mkChart('chart_I', '电流 I (A)', '#6f42c1')
+        };
+    }
+    
+    updateParams() { this.physics.updateParams(); if (!this.isRunning) this.redraw(); }
+    start() { if (!this.isRunning) { this.isRunning = true; this.loop(); } }
+    pause() { this.isRunning = false; cancelAnimationFrame(this.raf); }
+    reset() { this.pause(); this.physics.reset(); this.updateCharts(true); this.updateUI(); this.redraw(); }
+    redraw() { this.renderer.draw(this.physics, this.physics.params); }
+    loop(ts) {
+        if (!this.isRunning) return;
+        this.physics.step(); this.updateUI(); this.redraw();
+        if (!this.lastChart || ts - this.lastChart > 80) { this.updateCharts(); this.lastChart = ts; }
+        this.raf = requestAnimationFrame((t) => this.loop(t));
+    }
+    updateUI() {
+        const p = this.physics;
+        document.getElementById('val_t').textContent = p.t.toFixed(2);
+        document.getElementById('val_x').textContent = p.x.toFixed(2);
+        document.getElementById('val_v').textContent = p.v.toFixed(2);
+        document.getElementById('val_a').textContent = p.a.toFixed(2);
+        document.getElementById('val_I').textContent = p.I.toFixed(3);
+    }
+    updateCharts(clear = false) {
+        if (!this.charts) return; // 容错：如果图表未初始化
+        const h = this.physics.history;
+        const lbl = h.t.map(t => t.toFixed(1));
+        for(let k in this.charts) {
+            this.charts[k].data.labels = clear ? [] : lbl;
+            this.charts[k].data.datasets[0].data = clear ? [] : h[k];
+            this.charts[k].update('none');
+        }
+    }
+}
+window.onload = () => new SimulationApp();
+</script>
+</body>
+</html> 

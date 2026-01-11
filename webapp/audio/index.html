@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>物理声音实验室：全乐器演奏版</title>
+    <style>
+        :root {
+            --primary: #1565C0;
+            --bg: #f5f5f7;
+            --card: #ffffff;
+            --text: #333;
+            --border: #e0e0e0;
+            --guqin: #5D4037;
+            --note-bg: #e3f2fd;
+        }
+
+        [data-theme="dark"] {
+            --primary: #64b5f6;
+            --bg: #121212;
+            --card: #1e1e1e;
+            --text: #e0e0e0;
+            --border: #333;
+            --note-bg: #263238;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center;
+            user-select: none; padding-bottom: 60px;
+            touch-action: manipulation;
+            transition: background 0.3s;
+        }
+
+        /* 布局容器 */
+        .container {
+            max-width: 800px; width: 100%; background: var(--card);
+            border-radius: 12px; margin-bottom: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid var(--border);
+            box-sizing: border-box; overflow: hidden;
+            transition: background 0.3s, border 0.3s;
+        }
+
+        /* 可折叠标题样式 */
+        .fold-header {
+            margin: 0; padding: 15px;
+            font-size: 1.1rem; color: var(--primary);
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; background: rgba(0,0,0,0.02);
+            transition: background 0.2s;
+        }
+        .fold-header:hover { background: rgba(0,0,0,0.05); }
+        .fold-header::after {
+            content: '▼'; font-size: 0.8em; transition: transform 0.3s; opacity: 0.6;
+        }
+        .fold-header.collapsed::after { transform: rotate(-90deg); }
+
+        /* 折叠内容区域 */
+        .fold-body {
+            padding: 0 15px 15px 15px;
+            max-height: 800px; 
+            opacity: 1;
+            transition: max-height 0.4s ease-out, opacity 0.3s ease-out, padding 0.3s;
+        }
+        .fold-body.collapsed {
+            max-height: 0; opacity: 0; padding-bottom: 0; overflow: hidden;
+        }
+
+        /* 按钮组 */
+        .btn-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .btn {
+            padding: 8px 16px; border-radius: 20px; border: none; font-weight: bold; color: white;
+            cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); opacity: 0.9; }
+        .btn-rec { background: #ff5252; }
+        .btn-rec.recording { background: #d32f2f; animation: pulse 1s infinite; }
+        .btn-mic { background: #009688; }
+        .btn-mic.active { background: #004d40; box-shadow: inset 0 0 10px #000; }
+        .btn-log { background: #9c27b0; } 
+        .btn-log.active { background: #7b1fa2; animation: pulse 1.5s infinite; }
+        
+        /* 播放按钮颜色 */
+        .btn-play-calc { background: var(--primary); }
+        .btn-play-piano { background: #333; border: 1px solid #666; }
+        .btn-play-guqin { background: var(--guqin); }
+        
+        .btn-stop { background: #555; }
+        .btn-util { background: #78909c; }
+
+        @keyframes pulse { 0% {opacity:1} 50% {opacity:0.6} 100% {opacity:1} }
+
+        /* 简谱显示区域 */
+        .score-board {
+            margin-top: 10px; padding: 10px; background: var(--note-bg);
+            border-radius: 8px; border: 1px dashed var(--border);
+            min-height: 40px; max-height: 100px; overflow-y: auto;
+            font-family: monospace; font-size: 18px; letter-spacing: 5px;
+            color: var(--text); white-space: pre-wrap; word-break: break-all;
+            display: none;
+        }
+        .score-board.active { display: block; }
+        .score-board span { animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity:0; transform: translateY(5px); } to { opacity:1; transform: translateY(0); } }
+
+        /* 乐器与视图布局 */
+        .instrument-zone { display: flex; flex-wrap: wrap; gap: 15px; }
+        .ctrl-area { flex: 1; min-width: 280px; }
+        .view-area { flex: 1; min-width: 280px; position: relative; }
+
+        canvas { width: 100%; height: 100px; background: #000; border-radius: 8px; display: block; }
+        
+        .pitch-overlay {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(0,0,0,0.7); color: #00e676; 
+            padding: 5px 10px; border-radius: 4px; font-family: monospace; font-size: 16px;
+            pointer-events: none; opacity: 0; transition: opacity 0.2s;
+        }
+        .pitch-overlay.show { opacity: 1; }
+
+        /* 1. 计算器按键 */
+        .calc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        .c-btn {
+            padding: 15px 0; background: #eee; border: 1px solid #ccc; border-radius: 6px;
+            font-family: monospace; font-size: 18px; color: #333; cursor: pointer;
+            box-shadow: 0 3px 0 #bbb; position: relative;
+        }
+        .c-btn:active, .c-btn.active { transform: translateY(3px); box-shadow: none; background: #cfd8dc; }
+
+        /* 2. 钢琴按键 */
+        .piano-box { 
+            position: relative; height: 120px; width: 100%; 
+            background: #333; border-radius: 4px; overflow: hidden;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .white-keys-container { display: flex; width: 100%; height: 100%; }
+        .wk {
+            flex: 1; background: white; border: 1px solid #bbb; border-top: none;
+            border-radius: 0 0 5px 5px; cursor: pointer; position: relative; z-index: 1;
+            display: flex; align-items: flex-end; justify-content: center; 
+            padding-bottom: 8px; font-size: 12px; color: #555; margin: 0 1px;
+        }
+        .wk:active, .wk.active { background: linear-gradient(to bottom, #fff 0%, #e0e0e0 100%); }
+        .bk {
+            position: absolute; top: 0; height: 65%; width: 7.5%; 
+            background: #111; z-index: 10; border-radius: 0 0 3px 3px;
+            cursor: pointer; box-shadow: 2px 2px 2px rgba(0,0,0,0.3); border: 1px solid #000;
+        }
+        .bk:active, .bk.active { background: #000; border: 1px solid #555; }
+
+        /* 3. 古琴 */
+        .guqin-box { display: flex; flex-direction: column; gap: 8px; background: var(--guqin); padding: 12px; border-radius: 8px; }
+        .string {
+            height: 4px; background: rgba(255,255,255,0.6); position: relative; cursor: pointer;
+            display: flex; align-items: center; transition: height 0.1s;
+        }
+        .string::before {
+            content: attr(data-txt); position: absolute; left: -30px; color: var(--guqin); 
+            font-weight: bold; font-family: "KaiTi"; font-size: 14px;
+        }
+        [data-theme="dark"] .string::before { color: #d7ccc8; }
+        .string:hover, .string:active, .string.active { height: 6px; background: #fff; box-shadow: 0 0 10px gold; }
+
+        .overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;
+            transition: opacity 0.5s;
+        }
+        .start-btn {
+            font-size: 20px; padding: 15px 40px; border-radius: 50px; background: var(--primary);
+            color: white; border: none; margin-top: 20px; cursor: pointer;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+        .watermark {
+            position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 12px;
+            color: #999; pointer-events: none; font-family: "KaiTi"; text-shadow: 1px 1px 0 var(--bg);
+        }
+    </style>
+</head>
+<body>
+
+<div class="watermark">南阳一中 张铭戈 &nbsp;|&nbsp; 公众号：戈悟志理 琢瑷成器</div>
+
+<div class="overlay" id="overlay">
+    <h1>🔊 物理声音实验室 Pro</h1>
+    <p>全功能版：含钢琴/古琴自动演奏 & 智能记谱</p>
+    <button class="start-btn" onclick="startApp()">点击启动实验室</button>
+</div>
+
+<div class="container" style="display:flex; justify-content:space-between; align-items:center; padding: 10px 15px;">
+    <h2 style="margin:0; font-size: 1rem;">🧪 声音合成与分析</h2>
+    <div style="display:flex; gap:10px;">
+        <button class="btn btn-util" onclick="toggleAllFolds()" style="padding: 5px 10px; font-size:12px;">📂 全部折叠</button>
+        <button onclick="toggleTheme()" style="background:none; border:none; font-size:20px; cursor:pointer;">🌙</button>
+    </div>
+</div>
+
+<div class="container">
+    <h2 class="fold-header" onclick="toggleFold(this)">🎛️ 录音 & 拾音 & 自动演奏</h2>
+    <div class="fold-body">
+        <div class="btn-group">
+            <button class="btn btn-rec" id="recBtn" onclick="toggleRec()">🔴 录音</button>
+            <button class="btn btn-mic" id="micBtn" onclick="toggleMic()">🎤 拾音: 关</button>
+            <button class="btn btn-log" id="logBtn" onclick="toggleNoteLog()" disabled>📝 智能记谱</button>
+            <button class="btn btn-util" id="dlScoreBtn" onclick="downloadScore()" style="display:none;">💾 导出</button>
+            <button class="btn btn-util" id="clearScoreBtn" onclick="clearScore()" style="display:none;">🗑️</button>
+        </div>
+        
+        <div style="font-size:12px; color:#666; margin:5px 0;">🎵 自动演奏欢乐颂：</div>
+        <div class="btn-group">
+            <button class="btn btn-play-calc" onclick="playOde('calc')">🧮 计算器版</button>
+            <button class="btn btn-play-piano" onclick="playOde('piano')">🎹 钢琴版</button>
+            <button class="btn btn-play-guqin" onclick="playOde('guqin')">🍂 古琴版</button>
+            <button class="btn btn-stop" onclick="stopAll()">⏹ 停止播放</button>
+        </div>
+        
+        <!-- 简谱显示区域 -->
+        <div id="scoreDisplay" class="score-board"></div>
+
+        <div class="view-area" style="margin-top:10px;">
+            <canvas id="cvs-main"></canvas>
+            <div class="pitch-overlay" id="pitchDisplay">-- Hz</div>
+        </div>
+        <div id="status" style="font-size:12px; color:#888; margin-top:5px;">准备就绪</div>
+    </div>
+</div>
+
+<div class="container" id="inst-calc">
+    <h2 class="fold-header" onclick="toggleFold(this)">01. 计算器 (方波) <small style="font-size:12px; color:#888; font-weight:normal;">Numpad 1-8</small></h2>
+    <div class="fold-body">
+        <div class="instrument-zone">
+            <div class="ctrl-area">
+                <div class="calc-grid">
+                    <button class="c-btn" id="c-1" onpointerdown="noteOn('calc', 261, 'c-1')">1</button>
+                    <button class="c-btn" id="c-2" onpointerdown="noteOn('calc', 293, 'c-2')">2</button>
+                    <button class="c-btn" id="c-3" onpointerdown="noteOn('calc', 329, 'c-3')">3</button>
+                    <button class="c-btn" id="c-4" onpointerdown="noteOn('calc', 349, 'c-4')">4</button>
+                    <button class="c-btn" id="c-5" onpointerdown="noteOn('calc', 392, 'c-5')">5</button>
+                    <button class="c-btn" id="c-6" onpointerdown="noteOn('calc', 440, 'c-6')">6</button>
+                    <button class="c-btn" id="c-7" onpointerdown="noteOn('calc', 493, 'c-7')">7</button>
+                    <button class="c-btn" id="c-8" onpointerdown="noteOn('calc', 523, 'c-8')">8</button>
+                    <button class="c-btn" style="background:#ffcdd2; color:#c62828" onclick="stopAll()">OFF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container" id="inst-piano">
+    <h2 class="fold-header" onclick="toggleFold(this)">02. 钢琴 (严谨八度) <small style="font-size:12px; color:#888; font-weight:normal;">Key 1-8</small></h2>
+    <div class="fold-body">
+        <div class="piano-box" id="pianoWrapper">
+            <div class="white-keys-container">
+                <div class="wk" id="pk-1" onpointerdown="noteOn('piano', 261.6, 'pk-1')">1</div>
+                <div class="wk" id="pk-2" onpointerdown="noteOn('piano', 293.6, 'pk-2')">2</div>
+                <div class="wk" id="pk-3" onpointerdown="noteOn('piano', 329.6, 'pk-3')">3</div>
+                <div class="wk" id="pk-4" onpointerdown="noteOn('piano', 349.2, 'pk-4')">4</div>
+                <div class="wk" id="pk-5" onpointerdown="noteOn('piano', 392.0, 'pk-5')">5</div>
+                <div class="wk" id="pk-6" onpointerdown="noteOn('piano', 440.0, 'pk-6')">6</div>
+                <div class="wk" id="pk-7" onpointerdown="noteOn('piano', 493.9, 'pk-7')">7</div>
+                <div class="wk" id="pk-8" onpointerdown="noteOn('piano', 523.2, 'pk-8')">8</div>
+            </div>
+            <!-- 黑键 -->
+            <div class="bk" style="left: calc(12.5% - 3.75%)" onpointerdown="noteOn('piano', 277.2, this)"></div>
+            <div class="bk" style="left: calc(25.0% - 3.75%)" onpointerdown="noteOn('piano', 311.1, this)"></div>
+            <div class="bk" style="left: calc(50.0% - 3.75%)" onpointerdown="noteOn('piano', 370.0, this)"></div>
+            <div class="bk" style="left: calc(62.5% - 3.75%)" onpointerdown="noteOn('piano', 415.3, this)"></div>
+            <div class="bk" style="left: calc(75.0% - 3.75%)" onpointerdown="noteOn('piano', 466.2, this)"></div>
+        </div>
+    </div>
+</div>
+
+<div class="container" id="inst-guqin">
+    <h2 class="fold-header" onclick="toggleFold(this)" style="color:var(--guqin)">03. 七弦古琴 <small style="font-size:12px; color:#888; font-weight:normal;">Q-U</small></h2>
+    <div class="fold-body">
+        <div class="instrument-zone">
+            <div class="ctrl-area">
+                <div class="guqin-box">
+                    <div class="string" id="s-1" data-txt="宫" onpointerdown="noteOn('guqin', 261, 's-1')"></div>
+                    <div class="string" id="s-2" data-txt="商" onpointerdown="noteOn('guqin', 293, 's-2')"></div>
+                    <div class="string" id="s-3" data-txt="角" onpointerdown="noteOn('guqin', 329, 's-3')"></div>
+                    <div class="string" id="s-4" data-txt="清" onpointerdown="noteOn('guqin', 349, 's-4')"></div>
+                    <div class="string" id="s-5" data-txt="徵" onpointerdown="noteOn('guqin', 392, 's-5')"></div>
+                    <div class="string" id="s-6" data-txt="羽" onpointerdown="noteOn('guqin', 440, 's-6')"></div>
+                    <div class="string" id="s-7" data-txt="变" onpointerdown="noteOn('guqin', 493, 's-7')"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let ctx, master, analyser, micStream, micNode;
+    let isMicOn = false;
+    let isRec = false;
+    let mediaRec, chunks = [];
+    let timers = [];
+    let allCollapsed = false;
+
+    // --- 记谱相关变量 ---
+    let isNoteLogging = false;
+    let noteLog = [];
+    let lastStableNote = "";
+    let stabilityCount = 0; 
+    const STABILITY_THRESHOLD = 8; 
+
+    // 音符转频率表
+    const NOTE_STRINGS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const JIANPU_MAP = { 0: "1", 2: "2", 4: "3", 5: "4", 7: "5", 9: "6", 11: "7" };
+    
+    const FREQ_MAP = { 1:261.6, 2:293.6, 3:329.6, 4:349.2, 5:392.0, 6:440.0, 7:493.9, 8:523.2 };
+    
+    // 欢乐颂简谱: 3 3 4 5 | 5 4 3 2 | 1 1 2 3 | 3. 2 2 -
+    const SONG = [
+        {n:3,d:300}, {n:3,d:300}, {n:4,d:300}, {n:5,d:300}, 
+        {n:5,d:300}, {n:4,d:300}, {n:3,d:300}, {n:2,d:300}, 
+        {n:1,d:300}, {n:1,d:300}, {n:2,d:300}, {n:3,d:300}, 
+        {n:3,d:450}, {n:2,d:150}, {n:2,d:600}
+    ];
+
+    function toggleFold(header) {
+        header.classList.toggle('collapsed');
+        const body = header.nextElementSibling;
+        body.classList.toggle('collapsed');
+    }
+
+    function toggleAllFolds() {
+        const headers = document.querySelectorAll('.fold-header');
+        const bodies = document.querySelectorAll('.fold-body');
+        const btn = document.querySelector('.btn-util');
+        allCollapsed = !allCollapsed;
+        headers.forEach(h => allCollapsed ? h.classList.add('collapsed') : h.classList.remove('collapsed'));
+        bodies.forEach(b => allCollapsed ? b.classList.add('collapsed') : b.classList.remove('collapsed'));
+        btn.innerText = allCollapsed ? "📂 全部展开" : "📂 全部折叠";
+    }
+
+    function startApp() {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!ctx) {
+            ctx = new AC();
+            master = ctx.createGain();
+            master.gain.value = 0.6;
+            master.connect(ctx.destination);
+            analyser = ctx.createAnalyser();
+            analyser.fftSize = 2048;
+            master.connect(analyser);
+            const dest = ctx.createMediaStreamDestination();
+            master.connect(dest);
+            mediaRec = new MediaRecorder(dest.stream);
+            mediaRec.ondataavailable = e => chunks.push(e.data);
+            mediaRec.onstop = exportAudio;
+        }
+        if (ctx.state === 'suspended') ctx.resume();
+        document.getElementById('overlay').style.opacity = 0;
+        setTimeout(() => document.getElementById('overlay').remove(), 500);
+        visualize();
+        window.addEventListener('keydown', handleKey);
+    }
+
+    // --- 拾音/记谱 ---
+    async function toggleMic() {
+        const btn = document.getElementById('micBtn');
+        const logBtn = document.getElementById('logBtn');
+        if (!isMicOn) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                micStream = stream;
+                micNode = ctx.createMediaStreamSource(stream);
+                micNode.connect(analyser); 
+                isMicOn = true;
+                btn.classList.add('active'); btn.innerHTML = "🎤 拾音: 开";
+                document.getElementById('status').innerText = "🟢 正在监听环境声音...";
+                document.getElementById('pitchDisplay').classList.add('show');
+                logBtn.disabled = false;
+            } catch (err) { alert("无法访问麦克风: " + err); }
+        } else {
+            if (micStream) micStream.getTracks().forEach(t => t.stop());
+            if (micNode) micNode.disconnect();
+            isMicOn = false;
+            if(isNoteLogging) toggleNoteLog();
+            btn.classList.remove('active'); btn.innerHTML = "🎤 拾音: 关";
+            document.getElementById('status').innerText = "拾音已关闭";
+            document.getElementById('pitchDisplay').classList.remove('show');
+            logBtn.disabled = true;
+        }
+    }
+
+    function toggleNoteLog() {
+        const btn = document.getElementById('logBtn');
+        const board = document.getElementById('scoreDisplay');
+        const dlBtn = document.getElementById('dlScoreBtn');
+        const clrBtn = document.getElementById('clearScoreBtn');
+        isNoteLogging = !isNoteLogging;
+        if (isNoteLogging) {
+            btn.innerHTML = "⏹ 停止"; btn.classList.add('active');
+            board.classList.add('active'); dlBtn.style.display = 'inline-block'; clrBtn.style.display = 'inline-block';
+            document.getElementById('status').innerText = "📝 正在分析旋律...";
+            if(noteLog.length === 0) board.innerText = "等待声音输入...";
+        } else {
+            btn.innerHTML = "📝 智能记谱"; btn.classList.remove('active');
+            document.getElementById('status').innerText = "记谱已暂停";
+        }
+    }
+
+    function recordNote(note) {
+        if (!isNoteLogging) return;
+        if (noteLog.length === 0) document.getElementById('scoreDisplay').innerText = "";
+        noteLog.push(note);
+        const span = document.createElement('span'); span.innerText = note + " ";
+        const board = document.getElementById('scoreDisplay'); board.appendChild(span);
+        board.scrollTop = board.scrollHeight;
+    }
+
+    function clearScore() {
+        noteLog = []; document.getElementById('scoreDisplay').innerText = "等待声音输入..."; lastStableNote = "";
+    }
+    function downloadScore() {
+        if (noteLog.length === 0) { alert("无内容"); return; }
+        let content = "--- 物理声音实验室 - 自动简谱 ---\n\n";
+        noteLog.forEach((n, i) => { content += n + " "; if ((i + 1) % 8 === 0) content += "\n"; });
+        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `我的简谱_${Date.now()}.txt`; a.click();
+    }
+
+    // --- 音高算法 ---
+    function autoCorrelate(buf, sampleRate) {
+        let SIZE = buf.length, rms = 0;
+        for (let i=0; i<SIZE; i++) rms += buf[i]*buf[i];
+        rms = Math.sqrt(rms/SIZE);
+        if (rms < 0.03) return -1;
+        let r1 = 0, r2 = SIZE-1;
+        for (let i=0; i<SIZE/2; i++) if (Math.abs(buf[i]) < 0.2) { r1=i; break; }
+        for (let i=1; i<SIZE/2; i++) if (Math.abs(buf[SIZE-i]) < 0.2) { r2=SIZE-i; break; }
+        buf = buf.slice(r1, r2); SIZE = buf.length;
+        let c = new Array(SIZE).fill(0);
+        for (let i=0; i<SIZE; i++) for (let j=0; j<SIZE-i; j++) c[i] = c[i] + buf[j]*buf[j+i];
+        let d=0; while (c[d]>c[d+1]) d++;
+        let maxval=-1, maxpos=-1;
+        for (let i=d; i<SIZE; i++) if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+        return sampleRate / maxpos;
+    }
+
+    function getNoteInfo(freq) {
+        if (freq === -1 || !isFinite(freq)) return null;
+        const noteNum = 12 * (Math.log(freq / 440) / Math.log(2));
+        const midiNum = Math.round(noteNum) + 69;
+        const noteName = NOTE_STRINGS[midiNum % 12];
+        const octave = Math.floor(midiNum / 12) - 1;
+        let jianpu = JIANPU_MAP[midiNum % 12]; 
+        return { name: noteName + octave, jianpu: jianpu };
+    }
+
+    // --- 可视化 ---
+    function visualize() {
+        const cvs = document.getElementById('cvs-main');
+        const cx = cvs.getContext('2d');
+        const bufLen = analyser.frequencyBinCount;
+        const data = new Uint8Array(bufLen);
+        const floatData = new Float32Array(bufLen);
+
+        function draw() {
+            requestAnimationFrame(draw);
+            if (cvs.offsetParent !== null) {
+                if (cvs.width !== cvs.offsetWidth) cvs.width = cvs.offsetWidth;
+                if (cvs.height !== cvs.offsetHeight) cvs.height = cvs.offsetHeight;
+            }
+            analyser.getByteTimeDomainData(data);
+            analyser.getFloatTimeDomainData(floatData);
+            cx.fillStyle = '#111'; cx.fillRect(0,0,cvs.width,cvs.height);
+            cx.lineWidth = 2; cx.strokeStyle = isMicOn ? '#00e676' : '#2196f3';
+            cx.beginPath();
+            const slice = cvs.width * 1.0 / bufLen;
+            let x = 0;
+            for(let i=0; i<bufLen; i++) {
+                const v = data[i]/128.0; const y = v * cvs.height/2;
+                i===0?cx.moveTo(x,y):cx.lineTo(x,y); x+=slice;
+            }
+            cx.stroke();
+
+            if (isMicOn) {
+                const freq = autoCorrelate(floatData, ctx.sampleRate);
+                const info = getNoteInfo(freq);
+                const el = document.getElementById('pitchDisplay');
+                if (info) {
+                    el.innerText = `🎵 ${info.name} (${Math.round(freq)}Hz)`; el.style.opacity = 1;
+                    if (isNoteLogging && info.jianpu) {
+                        if (info.jianpu === window.tempNote) {
+                            stabilityCount++;
+                            if (stabilityCount > STABILITY_THRESHOLD && info.jianpu !== lastStableNote) {
+                                recordNote(info.jianpu); lastStableNote = info.jianpu; stabilityCount = 0;
+                            }
+                        } else { window.tempNote = info.jianpu; stabilityCount = 0; }
+                    } else if(freq === -1) stabilityCount = 0;
+                    // 如果音符变化了，允许重新记录
+                    if(info.jianpu !== lastStableNote && stabilityCount === 0) { /* reset logic if needed */ }
+                } else {
+                    el.innerText = "-- Hz"; el.style.opacity = 0.3; window.tempNote = null;
+                }
+            }
+        }
+        draw();
+    }
+
+    // --- 发声与演奏 ---
+    function noteOn(type, freq, domIdOrEl) {
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+
+        if (typeof domIdOrEl === 'string') {
+            const el = document.getElementById(domIdOrEl);
+            if(el) { el.classList.add('active'); setTimeout(()=>el.classList.remove('active'), 200); }
+        } else if (domIdOrEl) {
+            domIdOrEl.classList.add('active'); setTimeout(()=>domIdOrEl.classList.remove('active'), 200);
+        }
+
+        const t = ctx.currentTime;
+        const g = ctx.createGain();
+        g.connect(master);
+
+        if (type === 'calc') {
+            const osc = ctx.createOscillator(); osc.type = 'square'; osc.frequency.value = freq;
+            g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.2);
+            osc.connect(g); osc.start(t); osc.stop(t+0.2);
+        } 
+        else if (type === 'piano') {
+            [1,2,3,4].forEach(i => {
+                const o = ctx.createOscillator(); o.type = i%2?'sine':'triangle'; o.frequency.value = freq*i;
+                const hg = ctx.createGain(); hg.gain.setValueAtTime(0, t); 
+                hg.gain.linearRampToValueAtTime(0.2/i, t+0.02); 
+                hg.gain.exponentialRampToValueAtTime(0.001, t+1.5);
+                o.connect(hg); hg.connect(g); o.start(t); o.stop(t+1.5);
+            });
+        }
+        else if (type === 'guqin') {
+            const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = freq;
+            const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 3; 
+            f.frequency.setValueAtTime(freq*6, t); f.frequency.exponentialRampToValueAtTime(freq, t+0.6);
+            g.gain.setValueAtTime(0, t); 
+            g.gain.linearRampToValueAtTime(0.4, t+0.05); 
+            g.gain.exponentialRampToValueAtTime(0.001, t+3.0);
+            o.connect(f); f.connect(g); o.start(t); o.stop(t+3.0);
+        }
+    }
+
+    function playOde(inst) {
+        stopAll();
+        // 自动展开对应的乐器面板
+        let containerId = '';
+        if (inst === 'calc') containerId = 'inst-calc';
+        if (inst === 'piano') containerId = 'inst-piano';
+        if (inst === 'guqin') containerId = 'inst-guqin';
+        
+        const container = document.getElementById(containerId);
+        if (container) {
+            const header = container.querySelector('.fold-header');
+            if (header && header.classList.contains('collapsed')) toggleFold(header);
+            // 自动滚动到该乐器
+            setTimeout(() => container.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+        }
+
+        let t = 0;
+        document.getElementById('status').innerText = `正在演奏: ${inst === 'guqin' ? '古琴' : inst === 'piano' ? '钢琴' : '计算器'}版欢乐颂`;
+        
+        SONG.forEach(n => {
+            timers.push(setTimeout(() => {
+                let id = '';
+                if(inst==='calc') id='c-'+n.n;
+                if(inst==='piano') id='pk-'+n.n;
+                if(inst==='guqin') id='s-'+n.n;
+                noteOn(inst, FREQ_MAP[n.n], id);
+            }, t));
+            t+=n.d;
+        });
+        timers.push(setTimeout(()=>document.getElementById('status').innerText="就绪", t));
+    }
+
+    function stopAll() {
+        timers.forEach(clearTimeout); timers = [];
+        document.getElementById('status').innerText = "已停止";
+        if (ctx) ctx.suspend().then(()=>ctx.resume());
+    }
+
+    function toggleRec() {
+        const b = document.getElementById('recBtn');
+        if (!isRec) {
+            chunks = []; mediaRec.start(); isRec = true;
+            b.innerText = "⏹ 停止"; b.classList.add('recording');
+        } else {
+            mediaRec.stop(); isRec = false;
+            b.innerText = "🔴 录音"; b.classList.remove('recording');
+        }
+    }
+    function exportAudio() {
+        const url = URL.createObjectURL(new Blob(chunks, {'type':'audio/webm'}));
+        const a = document.createElement('a'); a.href = url; a.download = `物理实验_${Date.now()}.webm`; a.click();
+    }
+
+    function handleKey(e) {
+        if(e.repeat) return;
+        const k = e.key.toLowerCase();
+        const gMap = {'q':1,'w':2,'e':3,'r':4,'t':5,'y':6,'u':7};
+        if(gMap[k]) noteOn('guqin', FREQ_MAP[gMap[k]], 's-'+gMap[k]);
+        if(k>='1' && k<='8') {
+            if(e.location===3) noteOn('calc', FREQ_MAP[k], 'c-'+k);
+            else noteOn('piano', FREQ_MAP[k], 'pk-'+k);
+        }
+    }
+
+    function toggleTheme() {
+        const b = document.body;
+        b.setAttribute('data-theme', b.getAttribute('data-theme')==='dark'?'light':'dark');
+    }
+</script>
+</body>
+</html>

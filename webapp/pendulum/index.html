@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>交互式单摆仿真实验室 - 移动适配版</title>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --text-main: #f1f5f9;
+      --text-sub: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --border: #334155;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      height: 100vh; /* 兼容旧浏览器 */
+      height: 100dvh; /* 兼容现代移动端动态视口 */
+      overflow: hidden;
+    }
+
+    .main-container {
+      display: grid;
+      /* 默认桌面端：左右布局 */
+      grid-template-columns: 1fr 340px;
+      grid-template-rows: 100%;
+      height: 100%;
+    }
+
+    /* 左侧画布区域 */
+    .canvas-area {
+      position: relative;
+      background-color: #0b1121;
+      background-image: 
+        radial-gradient(circle at 50% 50%, #1e293b 1px, transparent 1px),
+        linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 20px 20px, 40px 40px, 40px 40px;
+      overflow: hidden;
+      cursor: default;
+      z-index: 1; 
+      /* 关键：禁止浏览器处理触摸手势，完全交给 JS 处理拖拽 */
+      touch-action: none; 
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+
+    /* 右侧控制面板 */
+    .controls-panel {
+      background-color: var(--card-bg);
+      border-left: 1px solid var(--border);
+      padding: 20px;
+      overflow-y: auto;
+      /* 移动端滚动流畅性 */
+      -webkit-overflow-scrolling: touch; 
+      box-shadow: -4px 0 15px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 2;
+    }
+
+    h2 { margin: 0 0 10px 0; font-size: 18px; font-weight: 600; color: var(--accent); }
+    
+    .control-group {
+      background: rgba(255,255,255,0.03);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .row {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 12px;
+    }
+    .row:last-child { margin-bottom: 0; }
+
+    .row-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .val-display {
+      font-family: 'SF Mono', 'Roboto Mono', monospace;
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    /* 现代滑块样式 - 移动端优化 */
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px; /* 稍微加粗轨道 */
+      background: #475569;
+      border-radius: 3px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px; /* 加大触控点 */
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      transition: transform 0.1s;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    input[type="range"]::-webkit-slider-thumb:hover,
+    input[type="range"]::-webkit-slider-thumb:active { transform: scale(1.2); }
+
+    /* 按钮组 */
+    .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-full { grid-column: span 2; }
+    
+    button {
+      padding: 12px; /* 加大点击区域 */
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 14px;
+      /* 禁止文本被选中 */
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:active { background: var(--accent-hover); transform: scale(0.98); }
+    .btn-secondary { background: #334155; color: var(--text-sub); }
+    .btn-secondary:active { background: #475569; color: white; transform: scale(0.98); }
+
+    .legend { display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--text-sub); }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    .hint-box {
+      font-size: 12px;
+      color: #fbbf24;
+      background: rgba(251, 191, 36, 0.1);
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(251, 191, 36, 0.2);
+      line-height: 1.4;
+    }
+
+    /* --- 移动端适配核心代码 --- */
+    @media (max-width: 800px) {
+      .main-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 320px; /* 上面是画布，下面固定高度控制台 */
+      }
+      .controls-panel { 
+        height: auto; 
+        border-left: none; 
+        border-top: 1px solid var(--border); 
+        padding: 15px;
+      }
+      /* 调整文字大小适应小屏幕 */
+      h2 { font-size: 16px; }
+      button { padding: 10px; font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="main-container">
+  <div class="canvas-area" id="canvasContainer">
+    <canvas id="c"></canvas>
+  </div>
+
+  <div class="controls-panel">
+    <h2>🔬 实验控制台</h2>
+    
+    <div class="hint-box">
+      ✨ <strong>交互提示：</strong> 拖动小球改变角度，<strong>松手自动开始</strong>。
+    </div>
+
+    <div class="control-group">
+      <div class="btn-group">
+        <button id="btnPlay" class="btn-primary">暂停 / 继续</button>
+        <button id="btnReset" class="btn-secondary">重置 (归零)</button>
+        <button id="btnImpulse" class="btn-secondary btn-full">🖐️ 给它推一把 (干扰)</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="row">
+        <div class="row-header"><label>摆长 L (m)</label><span id="lenVal" class="val-display">1.00</span></div>
+        <input id="len" type="range" min="0.2" max="2.5" step="0.01" value="1.00" />
+      </div>
+      <div class="row">
+        <div class="row-header"><label>重力 g (m/s²)</label><span id="gVal" class="val-display">9.8</span></div>
+        <input id="g" type="range" min="1.0" max="20.0" step="0.1" value="9.8" />
+      </div>
+      <div class="row">
+        <div class="row-header"><label>摆球质量 m (kg)</label><span id="massVal" class="val-display">1.0</span></div>
+        <input id="mass" type="range" min="0.1" max="5.0" step="0.1" value="1.0" />
+      </div>
+      <div class="row">
+        <div class="row-header"><label>阻尼系数 (空气阻力)</label><span id="dampVal" class="val-display">0.05</span></div>
+        <input id="damp" type="range" min="0.0" max="1.0" step="0.01" value="0.05" />
+      </div>
+      <div class="row">
+        <div class="row-header"><label>初始角度 θ (°)</label><span id="theta0Val" class="val-display">18</span></div>
+        <input id="theta0" type="range" min="-90" max="90" step="1" value="18" />
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="row">
+        <div class="row-header"><label>仿真速度</label><span id="speedVal" class="val-display">1.0×</span></div>
+        <input id="speed" type="range" min="0.1" max="3.0" step="0.1" value="1.0" />
+      </div>
+      <div class="row">
+        <div class="row-header"><label>矢量显示比例</label><span id="vecScaleVal" class="val-display">1.6×</span></div>
+        <input id="vecScale" type="range" min="0.5" max="4.0" step="0.1" value="1.6" />
+      </div>
+    </div>
+
+    <div class="control-group legend">
+      <div class="legend-item"><span class="dot" style="background:#22c55e"></span> 位移矢量 (Displacement)</div>
+      <div class="legend-item"><span class="dot" style="background:#f87171"></span> 回复力矢量 (Restoring Force)</div>
+      <div class="legend-item"><span class="dot" style="background:#94a3b8"></span> 运动轨迹 (Trail)</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d'); 
+  const container = document.getElementById('canvasContainer');
+
+  // UI Elements
+  const elL = document.getElementById('len');
+  const elG = document.getElementById('g');
+  const elM = document.getElementById('mass'); // 新增
+  const elD = document.getElementById('damp');
+  const elT0 = document.getElementById('theta0');
+  const elSpeed = document.getElementById('speed');
+  const elVecScale = document.getElementById('vecScale');
+
+  const vL = document.getElementById('lenVal');
+  const vG = document.getElementById('gVal');
+  const vM = document.getElementById('massVal'); // 新增
+  const vD = document.getElementById('dampVal');
+  const vT0 = document.getElementById('theta0Val');
+  const vSpeed = document.getElementById('speedVal');
+  const vVecScale = document.getElementById('vecScaleVal');
+
+  const btnPlay = document.getElementById('btnPlay');
+  const btnReset = document.getElementById('btnReset');
+  const btnImpulse = document.getElementById('btnImpulse');
+
+  // Physics State
+  let state = {
+    theta: 18 * Math.PI / 180,
+    omega: 0.0,
+    trail: []
+  };
+  const TRAIL_MAX = 300;
+  
+  // Animation & Interaction State
+  let isRunning = true;
+  let isDragging = false;
+  let dragHover = false;
+  let lastTime = 0;
+  
+  let geo = { pivotX: 0, pivotY: 0, scalePx: 100, bobX: 0, bobY: 0, bobR: 15 };
+
+  // --- 交互逻辑 (拖拽) ---
+  
+  function getMousePos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+    const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  }
+
+  function checkHover(pos) {
+    const dx = pos.x - geo.bobX;
+    const dy = pos.y - geo.bobY;
+    // 增加判定范围，移动端更友好
+    return (dx*dx + dy*dy) < (geo.bobR * 3.5) ** 2; 
+  }
+
+  function handleInputStart(evt) {
+    const pos = getMousePos(evt);
+    if (checkHover(pos)) {
+      isDragging = true;
+      state.omega = 0;
+      state.trail = [];
+      canvas.style.cursor = 'grabbing';
+    }
+  }
+
+  function handleInputMove(evt) {
+    const pos = getMousePos(evt);
+    
+    if (!isDragging) {
+      dragHover = checkHover(pos);
+      canvas.style.cursor = dragHover ? 'grab' : 'default';
+      return;
+    }
+
+    if (isDragging) {
+      const dx = pos.x - geo.pivotX;
+      const dy = pos.y - geo.pivotY;
+      
+      let newTheta = Math.atan2(dx, dy);
+      const limit = Math.PI / 2; 
+      if (newTheta > limit) newTheta = limit;
+      if (newTheta < -limit) newTheta = -limit;
+
+      state.theta = newTheta;
+      state.omega = 0;
+      
+      elT0.value = (newTheta * 180 / Math.PI).toFixed(0);
+      updLabels();
+    }
+  }
+
+  function handleInputEnd() {
+    if (isDragging) {
+      isDragging = false;
+      canvas.style.cursor = dragHover ? 'grab' : 'default';
+
+      // 核心功能：松手自动开始
+      if (!isRunning) {
+        isRunning = true;
+        btnPlay.textContent = '暂停';
+        btnPlay.className = 'btn-primary';
+      }
+    }
+  }
+
+  // 绑定事件 (兼容鼠标和触摸)
+  canvas.addEventListener('mousedown', handleInputStart);
+  window.addEventListener('mousemove', handleInputMove);
+  window.addEventListener('mouseup', handleInputEnd);
+  
+  // 触摸事件需加上 {passive: false} 否则无法阻止浏览器滚动
+  canvas.addEventListener('touchstart', (e) => { 
+    const pos = getMousePos(e);
+    if(checkHover(pos)) e.preventDefault();
+    handleInputStart(e); 
+  }, {passive: false});
+  
+  window.addEventListener('touchmove', (e) => { 
+    if(isDragging) e.preventDefault(); 
+    handleInputMove(e); 
+  }, {passive: false});
+  
+  window.addEventListener('touchend', handleInputEnd);
+
+  // --- UI Update ---
+
+  function updLabels() {
+    vL.textContent = (+elL.value).toFixed(2);
+    vG.textContent = (+elG.value).toFixed(1);
+    vM.textContent = (+elM.value).toFixed(1); // 新增
+    vD.textContent = (+elD.value).toFixed(2);
+    vT0.textContent = (+elT0.value).toFixed(0);
+    vSpeed.textContent = (+elSpeed.value).toFixed(1) + '×';
+    vVecScale.textContent = (+elVecScale.value).toFixed(1) + '×';
+  }
+
+  // 注册所有滑块监听
+  [elL, elG, elM, elD, elT0, elSpeed, elVecScale].forEach(el => el.addEventListener('input', updLabels));
+  
+  elT0.addEventListener('input', () => {
+    if (!isDragging) {
+      state.theta = (+elT0.value) * Math.PI / 180;
+      state.omega = 0;
+      state.trail = [];
+    }
+  });
+
+  btnPlay.addEventListener('click', () => {
+    isRunning = !isRunning;
+    btnPlay.textContent = isRunning ? '暂停' : '开始';
+    btnPlay.className = isRunning ? 'btn-primary' : 'btn-secondary';
+  });
+
+  btnReset.addEventListener('click', () => {
+    state.theta = 0;
+    state.omega = 0;
+    state.trail = [];
+    elT0.value = 0;
+    updLabels();
+    isRunning = false;
+    btnPlay.textContent = '开始';
+    btnPlay.className = 'btn-secondary';
+  });
+
+  btnImpulse.addEventListener('click', () => {
+    state.omega += (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random());
+    if (!isRunning) {
+        isRunning = true;
+        btnPlay.textContent = '暂停';
+        btnPlay.className = 'btn-primary';
+    }
+  });
+
+  updLabels();
+
+  // --- Physics (RK4) ---
+  function rk4Step(dt, L, g, c) {
+    const f1 = (th, w) => w;
+    const f2 = (th, w) => -c * w - (g / L) * Math.sin(th);
+    const k1_th = f1(state.theta, state.omega);
+    const k1_w  = f2(state.theta, state.omega);
+    const k2_th = f1(state.theta + 0.5*dt*k1_th, state.omega + 0.5*dt*k1_w);
+    const k2_w  = f2(state.theta + 0.5*dt*k1_th, state.omega + 0.5*dt*k1_w);
+    const k3_th = f1(state.theta + 0.5*dt*k2_th, state.omega + 0.5*dt*k2_w);
+    const k3_w  = f2(state.theta + 0.5*dt*k2_th, state.omega + 0.5*dt*k2_w);
+    const k4_th = f1(state.theta + dt*k3_th, state.omega + dt*k3_w);
+    const k4_w  = f2(state.theta + dt*k3_th, state.omega + dt*k3_w);
+    state.theta += (dt / 6) * (k1_th + 2*k2_th + 2*k3_th + k4_th);
+    state.omega += (dt / 6) * (k1_w  + 2*k2_w  + 2*k3_w  + k4_w);
+  }
+
+  // --- Drawing Helpers ---
+
+  function drawArrow(x1, y1, x2, y2, color, width) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const angle = Math.atan2(dy, dx);
+    const headLen = Math.min(15, Math.max(8, len * 0.25));
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI/6), y2 - headLen * Math.sin(angle - Math.PI/6));
+    ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI/6), y2 - headLen * Math.sin(angle + Math.PI/6));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBob(x, y, r) {
+    ctx.save();
+    const grad = ctx.createRadialGradient(x - r*0.3, y - r*0.3, r*0.1, x, y, r);
+    grad.addColorStop(0, '#94a3b8');
+    grad.addColorStop(0.3, '#475569');
+    grad.addColorStop(1, '#0f172a');
+    ctx.fillStyle = grad;
+    if (dragHover || isDragging) {
+      ctx.shadowColor = 'rgba(59, 130, 246, 0.8)';
+      ctx.shadowBlur = 20;
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = 2;
+    } else {
+        ctx.strokeStyle = '#334155';
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 【新功能】绘制水印
+  function drawWatermark(w, h) {
+    ctx.save();
+    // 使用 Canvas 绘制文字，确保在截图时也能保留
+    // 根据屏幕宽度自动调整字号，移动端稍小
+    const fontSize = w < 600 ? 12 : 14; 
+    ctx.font = `${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; // 20% 透明度，不抢眼
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    
+    const text = "";
+    // 绘制在右下角，留出一点边距
+    ctx.fillText(text, w - 10, h - 10);
+    ctx.restore();
+  }
+
+  // --- Main Loop ---
+
+  function loop(ts) {
+    if (!lastTime) lastTime = ts;
+    const dtReal = (ts - lastTime) / 1000;
+    lastTime = ts;
+
+    const L = +elL.value;
+    const g = +elG.value;
+    const mass = +elM.value; // 读取质量
+    const damp = +elD.value;
+    const speed = +elSpeed.value;
+    const vecScale = +elVecScale.value;
+
+    if (isRunning && !isDragging) {
+      const dt = Math.min(0.05, dtReal) * speed;
+      const steps = 4;
+      const h = dt / steps;
+      for (let i = 0; i < steps; i++) rk4Step(h, L, g, damp);
+      elT0.value = (state.theta * 180 / Math.PI).toFixed(0);
+      vT0.textContent = elT0.value; 
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr;
+    const H = canvas.height / dpr;
+    
+    geo.pivotX = W / 2;
+    geo.pivotY = H * 0.15;
+    geo.scalePx = Math.min(W, H) * 0.35; 
+    
+    const Lpx = L * geo.scalePx;
+    geo.bobX = geo.pivotX + Lpx * Math.sin(state.theta);
+    geo.bobY = geo.pivotY + Lpx * Math.cos(state.theta);
+    
+    // 核心修改：根据质量动态计算球半径
+    // 基准半径 8px，随质量线性增加，最大到 38px 左右
+    geo.bobR = 8 + mass * 6; 
+
+    state.trail.push({x: geo.bobX, y: geo.bobY});
+    if (state.trail.length > TRAIL_MAX) state.trail.shift();
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Trail
+    if (state.trail.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.moveTo(state.trail[0].x, state.trail[0].y);
+      for (let i = 1; i < state.trail.length; i++) {
+        ctx.lineTo(state.trail[i].x, state.trail[i].y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // String
+    ctx.save();
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(241, 245, 249, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.moveTo(geo.pivotX, geo.pivotY);
+    ctx.lineTo(geo.bobX, geo.bobY);
+    ctx.stroke();
+    ctx.restore();
+
+    // Pivot
+    ctx.save();
+    ctx.fillStyle = '#cbd5e1';
+    ctx.beginPath();
+    ctx.arc(geo.pivotX, geo.pivotY, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Bob
+    drawBob(geo.bobX, geo.bobY, geo.bobR);
+
+    // Vectors
+    const eqX = geo.pivotX;
+    const eqY = geo.pivotY + Lpx;
+    drawArrow(eqX, eqY, geo.bobX, geo.bobY, '#22c55e', 3);
+    const fMag = Math.sin(state.theta) * Lpx * 0.4 * vecScale; 
+    if (Math.abs(fMag) > 1) {
+        drawArrow(geo.bobX, geo.bobY, geo.bobX - fMag * Math.cos(state.theta), geo.bobY - fMag * -Math.sin(state.theta), '#f87171', 3);
+    }
+
+    // Text info
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '12px monospace';
+    ctx.fillText(`θ: ${(state.theta * 180 / Math.PI).toFixed(1)}°`, geo.bobX + geo.bobR + 5, geo.bobY);
+    ctx.restore();
+
+    // 绘制水印
+    drawWatermark(W, H);
+
+    requestAnimationFrame(loop);
+  }
+
+  function resize() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>

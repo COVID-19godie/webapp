@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>传送带模型：动力学与能量仿真实验室 (物理修正版)</title>
+    
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.css">
+    <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+
+    <style>
+        :root { --primary: #2c3e50; --accent: #e67e22; --bg: #f8f9fa; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .main-layout { display: flex; gap: 20px; max-width: 1100px; width: 100%; flex-wrap: wrap; }
+        .canvas-area { flex: 2; display: flex; flex-direction: column; gap: 10px; min-width: 300px; }
+        canvas { background: #fff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        .controls { flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-width: 300px; }
+        .control-group { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+        input[type="number"], select { width: 90px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-weight: bold; }
+        .btn-stack { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        button { padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+        .btn-apply { background: var(--primary); color: white; grid-column: span 2; margin-bottom: 5px; }
+        .btn-play { background: #27ae60; color: white; }
+        .btn-reset { background: #e74c3c; color: white; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: #edf2f7; padding: 10px; border-radius: 4px; text-align: center; border-left: 4px solid var(--primary); }
+        .stat-card small { display: block; font-size: 0.85em; color: #666; margin-bottom: 4px; }
+        .stat-card span { font-family: 'Consolas', monospace; font-weight: bold; font-size: 1.2em; color: var(--primary); }
+        .formula-display { margin-top: 20px; padding: 15px; background: #fffaf0; border: 1px dashed var(--accent); border-radius: 4px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+<h2 id="page-title">传送带模型：动力学与能量仿真</h2>
+
+<div class="main-layout">
+    <div class="canvas-area">
+        <div class="stats-grid">
+            <div class="stat-card"><small>物块速度 $v$ (m/s)</small><span id="stat-v">0.00</span></div>
+            <div class="stat-card"><small>相对位移 $\Delta s$ (m)</small><span id="stat-ds">0.00</span></div>
+            <div class="stat-card"><small>摩擦生热 $Q$ (J)</small><span id="stat-q">0.00</span></div>
+            <div class="stat-card"><small>加速度 $a$ (m/s²)</small><span id="stat-a">0.00</span></div>
+        </div>
+        <canvas id="simCanvas" width="700" height="350"></canvas>
+        <canvas id="vtCanvas" width="700" height="220"></canvas>
+    </div>
+
+    <div class="controls">
+        <h4 style="margin-top:0">参数设置</h4>
+        <div class="control-group">
+            <label>传送带速度 $v_b$</label>
+            <input type="number" id="in-vb" value="4.0" step="0.1">
+        </div>
+        <div class="control-group">
+            <label>物块初速 $v_0$</label>
+            <input type="number" id="in-v0" value="0.0" step="0.1">
+        </div>
+        <div class="control-group">
+            <label>倾斜方向</label>
+            <select id="in-tiltDir">
+                <option value="1">向右上方 (/)</option>
+                <option value="-1">向右下方 (\)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>倾角 $\theta$ (°)</label>
+            <input type="number" id="in-theta" value="30" step="1" min="0" max="80">
+        </div>
+        <div class="control-group">
+            <label>摩擦系数 $\mu$</label>
+            <input type="number" id="in-mu" value="0.50" step="0.01" min="0">
+        </div>
+        <div class="control-group">
+            <label>质量 $m$ (kg)</label>
+            <input type="number" id="in-m" value="1.0" step="0.1" min="0.1">
+        </div>
+
+        <button class="btn-apply" onclick="applyParams()">应用参数并复位</button>
+        <div class="btn-stack">
+            <button id="playBtn" class="btn-play" onclick="togglePlay()">开始仿真</button>
+            <button class="btn-reset" onclick="hardReset()">全复位</button>
+        </div>
+
+        <div class="formula-display" id="formula-box">
+            动力学方程:<br>
+            $$ F_{合} = F_{G_x} + f = ma $$
+            其中正方向为沿传送带向右
+        </div>
+    </div>
+</div>
+
+<script>
+    const simCanvas = document.getElementById('simCanvas');
+    const sCtx = simCanvas.getContext('2d');
+    const vtCanvas = document.getElementById('vtCanvas');
+    const vCtx = vtCanvas.getContext('2d');
+    const g = 9.8;
+
+    // 绘制常数
+    const ORIGIN_X = 50;  // 传送带左端点屏幕X
+    const ORIGIN_Y = 250; // 传送带左端点屏幕Y
+    const PIXELS_PER_METER = 40; 
+    const BELT_LENGTH_PX = 600;
+
+    let world = {
+        running: false,
+        vb: 4, v0: 0, mu: 0.5, theta: 0, m: 1, tiltDir: 1,
+        initialX: 100, // 初始位置（像素）
+        objX: 100,     
+        objV: 0, relS: 0, heat: 0, accel: 0,
+        beltOffset: 0, history: [], isDragging: false, timer: 0
+    };
+
+    function refreshMath() {
+        if (typeof renderMathInElement === 'function') {
+            renderMathInElement(document.getElementById('formula-box'), {
+                delimiters: [ {left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false} ],
+                throwOnError: false
+            });
+        }
+    }
+
+    function applyParams() {
+        world.vb = parseFloat(document.getElementById('in-vb').value) || 0;
+        world.v0 = parseFloat(document.getElementById('in-v0').value) || 0;
+        world.mu = parseFloat(document.getElementById('in-mu').value) || 0;
+        let angle = parseFloat(document.getElementById('in-theta').value) || 0;
+        world.tiltDir = parseInt(document.getElementById('in-tiltDir').value);
+        world.m = parseFloat(document.getElementById('in-m').value) || 1;
+        
+        // 物理角度：逆时针为正
+        world.theta = angle * (Math.PI / 180) * world.tiltDir;
+        
+        world.objX = world.initialX;
+        resetSimData();
+        updateFormulaText();
+    }
+
+    function updateFormulaText() {
+        // 更新显示的公式，根据当前参数显示具体的正负号
+        const sinT = Math.sin(world.theta);
+        const signG = (world.tiltDir === 1) ? "-" : "+"; // 向右上时重力沿x轴分量为负
+        // 这里仅显示通用形式，具体数值在step中计算
+        const text = `
+        $$ F_{G_x} = -mg\\sin\\theta $$
+        $$ f = \\mu mg\\cos\\theta \\cdot (-\\text{sgn}(v_{相对})) $$
+        $$ ma = F_{G_x} + f $$
+        `;
+        document.getElementById('formula-box').innerHTML = text;
+        refreshMath();
+    }
+
+    function resetSimData() {
+        world.objV = world.v0;
+        world.relS = 0; world.heat = 0; world.accel = 0; world.timer = 0;
+        world.history = []; world.running = false;
+        document.getElementById('playBtn').innerText = "开始仿真";
+        // 预计算一下初始加速度用于显示
+        calculatePhysics(0);
+        updateStats();
+    }
+
+    function hardReset() {
+        world.initialX = 100; world.objX = 100;
+        resetSimData();
+    }
+
+    function togglePlay() {
+        if(!world.running && world.history.length === 0) {
+             world.initialX = world.objX;
+        }
+        world.running = !world.running;
+        document.getElementById('playBtn').innerText = world.running ? "暂停" : "继续";
+    }
+
+    // 坐标变换：将鼠标坐标映射到传送带局部坐标
+    function getBeltPos(e) {
+        const rect = simCanvas.getBoundingClientRect();
+        const dx = (e.clientX - rect.left) - ORIGIN_X;
+        const dy = (e.clientY - rect.top) - ORIGIN_Y;
+        
+        // 逆变换：屏幕绘制是 rotate(-theta)，所以鼠标输入要 rotate(+theta)
+        // 注意Canvas Y轴向下，数学公式需适配
+        const cosT = Math.cos(world.theta);
+        const sinT = Math.sin(world.theta);
+        
+        // 投影到传送带轴向
+        // 屏幕绘制逻辑：x轴旋转 -theta。
+        // 反向投影：x_belt = dx * cos(-theta) + dy * sin(-theta) (这是旋转矩阵的转置)
+        // 简化后：
+        const beltX = dx * Math.cos(-world.theta) + dy * Math.sin(-world.theta);
+        const beltY = -dx * Math.sin(-world.theta) + dy * Math.cos(-world.theta);
+        return { x: beltX, y: beltY };
+    }
+
+    simCanvas.addEventListener('mousedown', e => {
+        const pos = getBeltPos(e);
+        if (Math.abs(pos.x - (world.objX - 30)) < 50 && Math.abs(pos.y + 15) < 50) {
+            world.isDragging = true;
+            world.running = false;
+            document.getElementById('playBtn').innerText = "开始仿真";
+        }
+    });
+
+    window.addEventListener('mousemove', e => {
+        if (world.isDragging) {
+            const pos = getBeltPos(e);
+            world.objX = Math.max(50, Math.min(BELT_LENGTH_PX + 50, pos.x + 30)); 
+            world.initialX = world.objX;
+            resetSimData();
+        }
+    });
+
+    window.addEventListener('mouseup', () => world.isDragging = false);
+
+    // --- 核心物理引擎 (修复版) ---
+    function calculatePhysics(dt) {
+        const sinT = Math.sin(world.theta); 
+        const cosT = Math.cos(world.theta); 
+
+        // 1. 重力沿斜面分量 (Gx)
+        // 坐标系定义：沿传送带向右为正 (+x)。
+        // 如果 theta > 0 (向右上方倾斜)，重力沿斜面向下，即指向负方向 -> Gx 为负。
+        // 如果 theta < 0 (向右下方倾斜)，重力沿斜面向下，即指向正方向 -> Gx 为正。
+        // 公式：Gx = -mg * sin(theta) 
+        // 验证：当theta=30度，sin(30)=0.5 -> Gx = -4.9 (符合向左下)。
+        // 验证：当theta=-30度，sin(-30)=-0.5 -> Gx = +4.9 (符合向右下)。
+        const F_gx = -world.m * g * sinT;
+
+        // 2. 摩擦力 (f)
+        // 正压力
+        const F_N = world.m * g * cosT;
+        const f_max = world.mu * F_N; // 最大静摩擦力/滑动摩擦力大小
+
+        let F_f = 0;
+        const v_rel = world.objV - world.vb; // 物块相对于传送带的速度
+
+        // 判定是否处于"相对静止"（共速）状态
+        if (Math.abs(v_rel) < 0.02) {
+            // 尝试保持静止
+            // 此时需要的静摩擦力 f_req 满足：F_gx + f_req = 0 => f_req = -F_gx
+            const f_req = -F_gx;
+
+            if (Math.abs(f_req) <= f_max) {
+                // 静摩擦力足够
+                F_f = f_req;
+                if (dt > 0) world.objV = world.vb; // 强制锁速，消除浮点漂移
+            } else {
+                // 静摩擦力不足，发生滑动 (例如倾角过大)
+                // 摩擦力方向与"试图运动的方向"相反。
+                // 试图运动方向由重力决定 (-F_gx)。
+                // 其实就是滑动摩擦，方向与 f_req 相同
+                F_f = Math.sign(f_req) * f_max;
+            }
+        } else {
+            // 滑动状态
+            // 摩擦力方向与相对运动方向相反
+            // 如果 v_rel > 0 (物块比传送带快)，摩擦力向后 (-1)
+            // 如果 v_rel < 0 (物块比传送带慢)，摩擦力向前 (+1)
+            F_f = -Math.sign(v_rel) * f_max;
+            
+            // 计算生热 (功 = 力 * 相对位移)
+            if (dt > 0) {
+                world.heat += f_max * Math.abs(v_rel) * dt;
+                world.relS += Math.abs(v_rel) * dt;
+            }
+        }
+
+        // 3. 牛顿第二定律
+        const F_net = F_gx + F_f;
+        world.accel = F_net / world.m;
+    }
+
+    function step() {
+        if (!world.running) return;
+        const dt = 0.016;
+        
+        calculatePhysics(dt);
+
+        world.objV += world.accel * dt;
+        world.objX += world.objV * dt * PIXELS_PER_METER;
+        world.beltOffset += world.vb * dt * PIXELS_PER_METER;
+        world.timer += dt;
+
+        world.history.push({t: world.timer, v: world.objV, vb: world.vb});
+        
+        // 边界检查
+        if(world.objX > BELT_LENGTH_PX + 100 || world.objX < -100) world.running = false;
+        if(world.history.length > 600) world.history.shift();
+    }
+
+    function drawVTChart() {
+        vCtx.clearRect(0,0,700,220);
+        const offsetX = 50;
+        const offsetY = 110; // y=0 在中间，方便显示负速度
+        const scaleV = 8; 
+        const scaleT = 50; 
+
+        // 坐标轴
+        vCtx.strokeStyle = "#ccc"; vCtx.lineWidth = 1;
+        // X轴
+        vCtx.beginPath(); vCtx.moveTo(offsetX, offsetY); vCtx.lineTo(680, offsetY); vCtx.stroke();
+        // Y轴
+        vCtx.beginPath(); vCtx.moveTo(offsetX, 10); vCtx.lineTo(offsetX, 210); vCtx.stroke();
+        
+        // 标签
+        vCtx.fillStyle = "#666"; vCtx.font = "12px Arial";
+        vCtx.fillText("v (m/s)", offsetX - 40, 20);
+        vCtx.fillText("t (s)", 670, offsetY + 15);
+        vCtx.fillText("0", offsetX - 15, offsetY + 5);
+
+        if(world.history.length > 0) {
+            // 传送带速度
+            vCtx.setLineDash([5,5]); vCtx.strokeStyle = "#3498db";
+            let vy_b = offsetY - world.vb * scaleV;
+            vCtx.beginPath(); vCtx.moveTo(offsetX, vy_b); vCtx.lineTo(680, vy_b); vCtx.stroke();
+            vCtx.setLineDash([]);
+
+            // 物块速度
+            vCtx.strokeStyle = "#e67e22"; vCtx.lineWidth = 2;
+            vCtx.beginPath();
+            const startT = world.history[0].t;
+            world.history.forEach((h, i) => {
+                let x = offsetX + (h.t - startT) * scaleT;
+                let y = offsetY - h.v * scaleV;
+                if(i===0) vCtx.moveTo(x, y); else vCtx.lineTo(x, y);
+            });
+            vCtx.stroke();
+        }
+    }
+
+    function render() {
+        sCtx.clearRect(0,0,700,350);
+        sCtx.save();
+        
+        sCtx.translate(ORIGIN_X, ORIGIN_Y);
+        // Canvas旋转顺时针为正，所以向右上倾斜需要旋转负角度
+        sCtx.rotate(-world.theta); 
+
+        // 绘制传送带
+        sCtx.fillStyle = "#34495e";
+        sCtx.fillRect(0, 0, BELT_LENGTH_PX, 12);
+        
+        // 轮子
+        sCtx.beginPath(); sCtx.arc(0, 6, 6, 0, Math.PI*2); sCtx.arc(BELT_LENGTH_PX, 6, 6, 0, Math.PI*2);
+        sCtx.fill();
+
+        // 纹理
+        sCtx.strokeStyle = "rgba(255,255,255,0.5)";
+        sCtx.lineWidth = 2;
+        for(let i=-200; i<BELT_LENGTH_PX + 200; i+=40) {
+            let tx = (i + world.beltOffset) % BELT_LENGTH_PX;
+            if(tx < 0) tx += BELT_LENGTH_PX;
+            if(tx <= BELT_LENGTH_PX) {
+                sCtx.beginPath(); sCtx.moveTo(tx, 0); sCtx.lineTo(tx, 12); sCtx.stroke();
+            }
+        }
+
+        // 绘制物块
+        const boxX = world.objX - 50; 
+        const boxY = -30;
+        
+        sCtx.fillStyle = world.isDragging ? "#d35400" : "#e67e22";
+        sCtx.fillRect(boxX, boxY, 40, 30);
+        sCtx.strokeStyle = "#fff";
+        sCtx.strokeRect(boxX, boxY, 40, 30);
+        
+        // 质心点
+        if (world.running || world.isDragging) {
+            sCtx.fillStyle = "rgba(192, 57, 43,1.0)";
+            sCtx.beginPath(); sCtx.arc(boxX + 20, boxY + 15, 3, 0, Math.PI*2); sCtx.fill();
+        }
+
+        sCtx.restore();
+
+        // 地面
+        sCtx.strokeStyle = "#ccc";
+        sCtx.setLineDash([2, 4]);
+        sCtx.beginPath(); sCtx.moveTo(0, ORIGIN_Y + 20); sCtx.lineTo(700, ORIGIN_Y + 20); sCtx.stroke();
+        sCtx.setLineDash([]);
+
+        drawVTChart();
+        updateStats();
+    }
+
+    function updateStats() {
+        document.getElementById('stat-v').innerText = world.objV.toFixed(2);
+        document.getElementById('stat-ds').innerText = world.relS.toFixed(2);
+        document.getElementById('stat-q').innerText = (world.heat).toFixed(2);
+        
+        // 显示加速度，增加正号显示以明确方向
+        let aStr = world.accel.toFixed(2);
+        if (world.accel > 0) aStr = "+" + aStr;
+        document.getElementById('stat-a').innerText = aStr;
+    }
+
+    function animate() {
+        step(); render(); requestAnimationFrame(animate);
+    }
+
+    window.onload = () => { applyParams(); animate(); };
+</script>
+</body>
+</html>

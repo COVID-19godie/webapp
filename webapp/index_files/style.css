@@ -1,0 +1,288 @@
+/* === 全局变量定义 === */
+:root {
+    --bg-dark: #121212;      /* 深色背景 */
+    --bg-panel: #1e1e1e;     /* 面板背景 */
+    --bg-hover: #2c2c2c;     /* 悬停背景 */
+    
+    --text-main: #e0e0e0;
+    --text-muted: #a0a0a0;
+    
+    --accent-mech: #3498db;  /* 机械蓝 */
+    --accent-opt: #9b59b6;   /* 光学紫 */
+    --accent-elec: #f1c40f;  /* 电学黄 */
+    --accent-danger: #e74c3c; /* 红色警告/退出 */
+    --accent-success: #2ecc71; /* 绿色运行 */
+    
+    --border-radius: 12px;
+    --border-light: 1px solid #333;
+    --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* === 基础重置 === */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none; /* 防止用户误选中文本，提升APP质感 */
+}
+
+body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    height: 100vh;
+    overflow: hidden; /* 禁止整个页面滚动 */
+}
+
+/* 布局容器 */
+.container {
+    display: flex;
+    height: 100%;
+    width: 100%;
+}
+
+/* === 左侧栏/头部样式 === */
+.main-header {
+    width: 260px;
+    background-color: var(--bg-panel);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    border-right: var(--border-light);
+    z-index: 10;
+}
+
+.logo h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+}
+
+.logo h1 span { color: var(--accent-mech); }
+.logo p { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 3rem; }
+
+.main-header nav ul { list-style: none; }
+.main-header nav li { margin-bottom: 0.5rem; }
+
+.main-header nav a {
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 8px;
+    transition: var(--transition);
+}
+
+.main-header nav a i { margin-right: 12px; width: 20px; text-align: center; }
+
+.main-header nav li.active a,
+.main-header nav a:hover {
+    background-color: rgba(255,255,255,0.05);
+    color: #fff;
+}
+
+.system-status {
+    margin-top: auto; /* 推到底部 */
+    font-size: 0.75rem;
+    color: #555;
+    line-height: 1.6;
+}
+
+/* === 主仪表盘样式 === */
+.dashboard {
+    flex: 1;
+    padding: 3rem;
+    overflow-y: auto; /* 仅允许仪表盘内容滚动 */
+    position: relative;
+}
+
+.welcome-banner { margin-bottom: 3rem; }
+.welcome-banner h2 { font-size: 2rem; margin-bottom: 0.5rem; }
+
+/* 模块卡片网格 */
+.module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.card {
+    background-color: var(--bg-panel);
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid transparent;
+    position: relative;
+    overflow: hidden;
+    height: 100%;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    background-color: var(--bg-hover);
+}
+
+.card-icon { font-size: 3rem; margin-bottom: 1.5rem; }
+.card h3 { font-size: 1.5rem; margin-bottom: 0.8rem; }
+.card p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.6; }
+
+.tags span {
+    display: inline-block;
+    background: rgba(255,255,255,0.08);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    margin-right: 5px;
+    color: #bbb;
+}
+
+/* 特定卡片配色 */
+.mechanic-card:hover { border-color: var(--accent-mech); }
+.mechanic-card .card-icon { color: var(--accent-mech); }
+
+.optics-card:hover { border-color: var(--accent-opt); }
+.optics-card .card-icon { color: var(--accent-opt); }
+
+.elec-card:hover { border-color: var(--accent-elec); }
+.elec-card .card-icon { color: var(--accent-elec); }
+
+
+/* === 核心实验工作区 (Workspace) === */
+.workspace {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background-color: var(--bg-dark);
+    z-index: 100; /* 确保覆盖在所有内容之上 */
+    display: flex;
+    flex-direction: column;
+    opacity: 1;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* 隐藏状态 */
+.workspace.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.95);
+}
+
+/* 工具栏 */
+.toolbar {
+    height: 60px;
+    background: var(--bg-panel);
+    border-bottom: var(--border-light);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    justify-content: space-between;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+
+.left-group, .center-group, .right-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.divider {
+    width: 1px;
+    height: 24px;
+    background: #444;
+    margin: 0 15px;
+}
+
+#currentExpTitle {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+/* 工具栏按钮 */
+.tool-btn {
+    background: transparent;
+    border: 1px solid #444;
+    color: var(--text-main);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.tool-btn:hover { background: rgba(255,255,255,0.1); border-color: #666; }
+.tool-btn:active { transform: translateY(1px); }
+
+/* 特殊按钮颜色 */
+.tool-btn.primary { background: var(--accent-mech); border-color: var(--accent-mech); color: #fff; }
+.tool-btn.primary:hover { filter: brightness(1.1); }
+
+.tool-btn.danger { color: #ff6b6b; border-color: #ff6b6b; }
+.tool-btn.danger:hover { background: rgba(255, 107, 107, 0.1); }
+
+/* 工作区主体布局 */
+.work-area {
+    flex: 1;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 画布 */
+#simCanvas {
+    flex: 1;
+    background-color: #000;
+    cursor: crosshair;
+    /* 网格背景图（可选） */
+    background-image: 
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+}
+
+/* 右侧边栏 */
+.sidebar {
+    width: 280px;
+    background: var(--bg-panel);
+    border-left: var(--border-light);
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+}
+
+.sidebar-header h4 {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+}
+
+.component-list {
+    flex: 1;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+.empty-tip {
+    text-align: center;
+    color: #555;
+    margin-top: 20px;
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+.props-panel {
+    height: 30%;
+    border-top: var(--border-light);
+    padding-top: 15px;
+}

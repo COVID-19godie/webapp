@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>高中物理：交流发电机 (移动端适配版)</title>
+    <style>
+        :root { --bg: #151820; --panel: rgba(25, 30, 40, 0.85); --text: #eee; --accent: #4fc3f7; }
+        body { margin: 0; overflow: hidden; background: var(--bg); font-family: "Segoe UI", sans-serif; color: var(--text); user-select: none; -webkit-user-select: none; touch-action: none; }
+        
+        canvas#main { position: absolute; width: 100%; height: 100%; z-index: 1; touch-action: none; }
+
+        .hud { position: absolute; z-index: 10; pointer-events: none; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+        
+        .panel { 
+            position: absolute; pointer-events: auto; 
+            background: var(--panel); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; padding: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            transition: all 0.3s ease;
+        }
+
+        /* 顶部信息栏 */
+        #panel-info { top: 10px; left: 10px; width: 180px; font-size: 12px; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .val { font-family: monospace; font-weight: bold; }
+        .c-flux { color: #4fc3f7; } .c-emf { color: #ff8a80; } .c-curr { color: #69f0ae; }
+
+        /* 示波器 */
+        #panel-scope { top: 10px; right: 10px; width: 300px; height: 160px; padding: 0; }
+        canvas#scope { width: 100%; height: 100%; background: rgba(0,0,0,0.2); border-radius: 4px; }
+
+        /* 2D 视图 */
+        #panel-2d { bottom: 180px; left: 10px; width: 120px; height: 120px; text-align: center; }
+        canvas#view2d { width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid #444; margin-top:2px; }
+
+        /* 控制面板 */
+        #panel-ctrl { bottom: 10px; right: 10px; width: 260px; font-size: 12px; }
+        .c-row { display: flex; align-items: center; margin-bottom: 10px; justify-content: space-between; }
+        
+        /* 优化滑块触摸体验 */
+        input[type=range] { 
+            flex: 1; margin: 0 10px; cursor: pointer; height: 20px; /* 增加点击区域 */
+            accent-color: var(--accent); 
+        }
+        
+        .btns { display: flex; gap: 8px; margin-top: 10px; }
+        button { 
+            flex: 1; background: #2c3e50; color: white; border: 1px solid #455a64; 
+            padding: 8px 0; cursor: pointer; border-radius: 6px; font-size: 13px;
+        }
+        button:active { background: var(--accent); border-color: var(--accent); color: #000; }
+
+        #watermark { 
+            position: absolute; bottom: 10px; width: 100%; 
+            text-align: center; color: rgba(255,255,255,0.1); 
+            pointer-events: none; font-weight: bold; font-size: 16px; 
+            font-family: "KaiTi", "楷体", serif; 
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            z-index: 0;
+        }
+
+        /* === 移动端响应式适配 === */
+        @media (max-width: 768px) {
+            #panel-info { top: 10px; left: 10px; width: 140px; padding: 8px; }
+            #panel-info .row { font-size: 11px; }
+            
+            /* 手机上把示波器缩小并置顶居中，或者放右上角 */
+            #panel-scope { 
+                top: 10px; right: 10px; 
+                width: 140px; height: 80px; 
+                opacity: 0.9;
+            }
+
+            /* 2D视图在手机上可能遮挡，稍微缩小 */
+            #panel-2d { bottom: 220px; left: 10px; width: 90px; height: 90px; }
+            canvas#view2d { width: 70px; height: 70px; }
+
+            /* 控制面板变为底部通栏 */
+            #panel-ctrl { 
+                bottom: 0; right: 0; left: 0; 
+                width: auto; border-radius: 12px 12px 0 0; 
+                padding: 15px 20px 20px 20px;
+                border-bottom: none;
+            }
+            
+            /* 调整水印位置，避免被底部控制栏遮挡 */
+            #watermark { bottom: 230px; font-size: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="main"></canvas>
+    
+    <div id="watermark">南阳一中张铭戈 公众号 戈悟志理琢瑷成器</div>
+
+    <div class="hud">
+        <div id="panel-info" class="panel">
+            <div style="color:#ffb74d; font-weight:bold; margin-bottom:5px;">实时数据</div>
+            <div class="row"><span>角度 θ</span><span id="d-theta" class="val">0.0°</span></div>
+            <div class="row"><span class="c-flux">磁通量 Φ</span><span id="d-flux" class="val c-flux">0.00</span></div>
+            <div class="row"><span class="c-emf">电动势 ε</span><span id="d-emf" class="val c-emf">0.00</span></div>
+            <div class="row"><span class="c-curr">电流 I</span><span id="d-curr" class="val c-curr">0.00</span></div>
+        </div>
+        <div id="panel-scope" class="panel"><canvas id="scope"></canvas></div>
+        <div id="panel-2d" class="panel">
+            <div style="font-size:10px; color:#aaa;">侧视截面</div>
+            <canvas id="view2d"></canvas>
+        </div>
+        <div id="panel-ctrl" class="panel">
+            <div class="c-row"><span>转速 ω</span><input id="i-omega" type="range" min="0.1" max="3.0" step="0.1" value="0.5"><span id="v-omega" class="val">0.5</span></div>
+            <div class="c-row"><span>磁场 B</span><input id="i-B" type="range" min="0.1" max="5.0" step="0.1" value="1.5"><span id="v-B" class="val">1.5</span></div>
+            <div class="c-row"><span>面积 S</span><input id="i-S" type="range" min="0.1" max="2.0" step="0.1" value="0.6"><span id="v-S" class="val">0.6</span></div>
+            <div class="c-row"><span>电阻 R</span><input id="i-R" type="range" min="0.1" max="10.0" step="0.1" value="2.0"><span id="v-R" class="val">2.0</span></div>
+            <div class="btns">
+                <button id="b-pause">暂停/继续</button>
+                <button id="b-reset">重置</button>
+                <button id="b-field">磁感线</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+/**
+ * ==========================================
+ * MechanicGL - 渲染核心 (保持不变)
+ * ==========================================
+ */
+const Render = (() => {
+    const V3 = {
+        add: (a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],
+        sub: (a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],
+        mul: (a,s)=>[a[0]*s,a[1]*s,a[2]*s],
+        dot: (a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],
+        cross: (a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],
+        norm: (a)=>{let l=Math.hypot(...a);return l>0?[a[0]/l,a[1]/l,a[2]/l]:[0,0,0]},
+        len: (a)=>Math.hypot(...a),
+        trans: (v,m)=>[
+            v[0]*m[0]+v[1]*m[4]+v[2]*m[8]+m[12],
+            v[0]*m[1]+v[1]*m[5]+v[2]*m[9]+m[13],
+            v[0]*m[2]+v[1]*m[6]+v[2]*m[10]+m[14]
+        ]
+    };
+
+    const M4 = {
+        align: (pos, vec) => {
+            let y = V3.norm(vec);
+            let up = Math.abs(y[1]) > 0.99 ? [1,0,0] : [0,1,0];
+            let x = V3.norm(V3.cross(y, up));
+            let z = V3.cross(x, y);
+            return [x[0],x[1],x[2],0, y[0],y[1],y[2],0, z[0],z[1],z[2],0, pos[0],pos[1],pos[2],1];
+        },
+        lookAt: (eye, target, up) => {
+            let z = V3.norm(V3.sub(eye, target));
+            let x = V3.norm(V3.cross(up, z));
+            let y = V3.cross(z, x);
+            return [
+                x[0], y[0], z[0], 0,
+                x[1], y[1], z[1], 0,
+                x[2], y[2], z[2], 0,
+                -V3.dot(x,eye), -V3.dot(y,eye), -V3.dot(z,eye), 1
+            ];
+        }
+    };
+
+    let drawList = [];
+
+    function quad(verts, color, normal) {
+        drawList.push({ type: 'poly', verts, col: color, norm: normal });
+    }
+
+    function cube(pos, size, color) {
+        let [w, h, d] = size;
+        let [x, y, z] = pos;
+        let hw=w/2, hh=h/2, hd=d/2;
+        let v = [
+            [x-hw,y-hh,z+hd], [x+hw,y-hh,z+hd], [x+hw,y+hh,z+hd], [x-hw,y+hh,z+hd],
+            [x-hw,y-hh,z-hd], [x+hw,y-hh,z-hd], [x+hw,y+hh,z-hd], [x-hw,y+hh,z-hd]
+        ];
+        let faces = [[0,1,2,3],[1,5,6,2],[5,4,7,6],[4,0,3,7],[3,2,6,7],[4,5,1,0]];
+        let norms = [[0,0,1],[1,0,0],[0,0,-1],[-1,0,0],[0,1,0],[0,-1,0]];
+        faces.forEach((idx, i) => quad(idx.map(j=>v[j]), color, norms[i]));
+    }
+
+    function cylinder(pos, axis, r, len, color) {
+        let m = M4.align(pos, axis);
+        let segs = 12; 
+        let pts = [];
+        for(let i=0; i<segs; i++) {
+            let a = i/segs * Math.PI*2;
+            pts.push([Math.cos(a)*r, 0, Math.sin(a)*r]);
+        }
+        for(let i=0; i<segs; i++) {
+            let ni = (i+1)%segs;
+            let raw = [[pts[i][0], len/2, pts[i][1]], [pts[ni][0], len/2, pts[ni][1]], [pts[ni][0], -len/2, pts[ni][1]], [pts[i][0], -len/2, pts[i][1]]];
+            let verts = raw.map(v=>V3.trans(v,m));
+            let n = V3.norm(V3.sub(verts[0], pos));
+            quad(verts, color, n);
+        }
+    }
+
+    function tube(p1, p2, r, color) {
+        let vec = V3.sub(p2, p1);
+        let len = V3.len(vec);
+        if(len < 0.001) return;
+        let center = V3.mul(V3.add(p1, p2), 0.5);
+        cylinder(center, vec, r, len, color);
+    }
+
+    function thinLine(p1, p2, color) {
+        drawList.push({ type: 'line', verts: [p1, p2], col: color });
+    }
+
+    function text(pos, str, color, size) {
+        drawList.push({ type: 'text', pos, str, col: color, size: size||24 });
+    }
+
+    function render(ctx, width, height, viewMat) {
+        let cx = width/2, cy = height/2, fov = 1000;
+        
+        drawList.forEach(p => {
+            if (p.type === 'text') {
+                p.viewPos = V3.trans(p.pos, viewMat);
+                p.z = p.viewPos[2];
+            } else {
+                p.viewVerts = p.verts.map(v => V3.trans(v, viewMat));
+                p.z = 0; p.viewVerts.forEach(v => p.z += v[2]); p.z /= p.viewVerts.length;
+                if(p.type === 'poly') {
+                    let v0=p.viewVerts[0], v1=p.viewVerts[1], v2=p.viewVerts[2];
+                    let a = V3.sub(v1, v0), b = V3.sub(v2, v1);
+                    p.vNorm = V3.norm(V3.cross(a, b));
+                }
+            }
+        });
+
+        drawList.sort((a,b) => a.z - b.z);
+
+        ctx.clearRect(0,0,width,height);
+
+        drawList.forEach(p => {
+            if (p.z > -1) return;
+
+            if (p.type === 'text') {
+                 let x = cx + p.viewPos[0]*(fov/-p.viewPos[2]);
+                 let y = cy - p.viewPos[1]*(fov/-p.viewPos[2]);
+                 ctx.fillStyle = p.col;
+                 ctx.font = `bold ${p.size}px Arial`;
+                 ctx.textAlign = 'center';
+                 ctx.textBaseline = 'middle';
+                 ctx.fillText(p.str, x, y);
+                 return;
+            }
+
+            if (p.type === 'poly' && p.vNorm[2] <= 0) return; 
+
+            let pts2d = p.viewVerts.map(v => ({ x: cx + v[0]*(fov/-v[2]), y: cy - v[1]*(fov/-v[2]) }));
+
+            if (p.type === 'poly') {
+                let lightDir = V3.norm([0.6, 0.8, 0.6]); 
+                let diff = Math.max(0.2, V3.dot(p.norm || [0,1,0], lightDir));
+                let lit = 0.5 + 0.5 * diff;
+
+                ctx.fillStyle = tint(p.col, lit);
+                ctx.strokeStyle = tint(p.col, lit * 0.8);
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(pts2d[0].x, pts2d[0].y);
+                for(let i=1; i<pts2d.length; i++) ctx.lineTo(pts2d[i].x, pts2d[i].y);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            } else if (p.type === 'line') {
+                ctx.strokeStyle = p.col;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(pts2d[0].x, pts2d[0].y);
+                ctx.lineTo(pts2d[1].x, pts2d[1].y);
+                ctx.stroke();
+            }
+        });
+        drawList = [];
+    }
+
+    function tint(hex, f) {
+        let r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+        r=Math.min(255,r*f)|0; g=Math.min(255,g*f)|0; b=Math.min(255,b*f)|0;
+        return `rgb(${r},${g},${b})`;
+    }
+
+    return { cube, tube, thinLine, cylinder, text, render, M4, V3 };
+})();
+
+/**
+ * ==========================================
+ * Main Application
+ * ==========================================
+ */
+const cvs = document.getElementById('main');
+const ctx = cvs.getContext('2d');
+const cvsS = document.getElementById('scope');
+const ctxS = cvsS.getContext('2d');
+const cvs2 = document.getElementById('view2d');
+const ctx2 = cvs2.getContext('2d');
+
+const P = { omega: 0.5, B: 1.5, S: 0.6, R: 2.0, N: 100 };
+const Sim = { 
+    theta: 0, flux: 0, emf: 0, curr: 0, paused: false, showField: true,
+    hist: {i:[], e:[], f:[]},
+    cam: { r: 22, theta: 0.6, phi: 0.4 },
+    chargePos: 0 
+};
+
+const C = {
+    magN: '#d32f2f', magS: '#1976d2',
+    wireY: '#fbc02d', 
+    wireR: '#ff5252', wireB: '#448aff', wireG: '#90a4ae',
+    resBody: '#fff9c4', brush: '#ffb300', shaft: '#b0bec5',
+    joint: '#fdd835', 
+    charge: '#ffffff'
+};
+
+function drawFlow(p1, p2, spacing, phase) {
+    let vec = Render.V3.sub(p2, p1);
+    let len = Render.V3.len(vec);
+    if (len < 0.01) return;
+    let dir = Render.V3.norm(vec);
+    
+    let p = phase % spacing;
+    if (p < 0) p += spacing;
+
+    for (let d = p; d < len; d += spacing) {
+        let pos = Render.V3.add(p1, Render.V3.mul(dir, d));
+        Render.cube(pos, [0.08, 0.08, 0.08], C.charge);
+    }
+}
+
+function loop() {
+    if(!Sim.paused) Sim.theta += P.omega * 0.04;
+    
+    let maxF = P.N * P.B * P.S;
+    Sim.flux = maxF * Math.cos(Sim.theta);
+    Sim.emf = maxF * P.omega * Math.sin(Sim.theta);
+    Sim.curr = Sim.emf / P.R;
+
+    if (!Sim.paused) {
+        Sim.chargePos += Sim.curr * 0.001; 
+    }
+
+    let h = Sim.hist;
+    h.i.push(Sim.curr); h.e.push(Sim.emf); h.f.push(Sim.flux);
+    if(h.i.length>250) { h.i.shift(); h.e.shift(); h.f.shift(); }
+
+    document.getElementById('d-theta').innerText = (Sim.theta%(2*Math.PI)*180/Math.PI).toFixed(1)+'°';
+    document.getElementById('d-flux').innerText = Sim.flux.toFixed(2);
+    document.getElementById('d-emf').innerText = Sim.emf.toFixed(2);
+    document.getElementById('d-curr').innerText = Sim.curr.toFixed(2);
+
+    let cx = Sim.cam.r * Math.cos(Sim.cam.phi) * Math.sin(Sim.cam.theta);
+    let cy = Sim.cam.r * Math.sin(Sim.cam.phi);
+    let cz = Sim.cam.r * Math.cos(Sim.cam.phi) * Math.cos(Sim.cam.theta);
+    let viewMat = Render.M4.lookAt([cx, cy, cz], [0,0,0], [0,1,0]);
+
+    // 1. 磁铁
+    Render.cube([-5.5, 0, 0], [1.5, 4, 3.5], C.magN);
+    Render.text([-5.5, 2.5, 0], 'N', '#ff8a80', 30); 
+
+    Render.cube([5.5, 0, 0], [1.5, 4, 3.5], C.magS);
+    Render.text([5.5, 2.5, 0], 'S', '#82b1ff', 30); 
+
+    // 2. 外电路
+    let z1 = 3.5, z2 = 4.5;
+    let groundY = -4;
+    let wR = 0.04;
+    let pGap = 2.0; 
+
+    Render.cube([0, -0.9, z1], [0.4, 0.5, 0.3], C.brush);
+    Render.cube([0, -0.9, z2], [0.4, 0.5, 0.3], C.brush);
+    
+    let path = [[0,-1.2,z1], [0,-4,z1], [5,-4,z1], [5,-4,z2], [0,-4,z2], [0,-1.2,z2]];
+    
+    for(let i=0; i<path.length-1; i++) {
+        let pStart = path[i], pEnd = path[i+1];
+        if(i==2) { 
+            let rStart = [5,-4,z1];
+            let rMid1 = [5,-4,3.4];
+            let rMid2 = [5,-4,4.6];
+            let rEnd = [5,-4,z2];
+             Render.tube(rStart, rMid1, wR, C.wireY);
+             Render.tube(rMid2, rEnd, wR, C.wireY);
+             drawFlow(rStart, rMid1, pGap, Sim.chargePos);
+             drawFlow(rMid2, rEnd, pGap, Sim.chargePos);
+        } else {
+             Render.tube(pStart, pEnd, wR, C.wireY);
+             drawFlow(pStart, pEnd, pGap, Sim.chargePos);
+        }
+    }
+
+    Render.cylinder([5, groundY, 4], [0,0,1], 0.6, 1.2, C.resBody);
+    Render.cylinder([5, groundY, 3.6], [0,0,1], 0.61, 0.1, '#333');
+    Render.cylinder([5, groundY, 4.0], [0,0,1], 0.61, 0.1, '#333');
+    Render.cylinder([5, groundY, 4.4], [0,0,1], 0.61, 0.1, '#333');
+
+    // 3. 磁感线
+    if(Sim.showField) {
+        for(let y=-1.5; y<=1.5; y+=1.0)
+            for(let z=-1.2; z<=1.2; z+=1.2)
+                Render.thinLine([-4.5,y,z], [4.5,y,z], '#424242');
+    }
+
+    // 4. 转子
+    let cAB = C.wireG, cCD = C.wireG;
+    if(Math.abs(Sim.curr)>0.05) {
+        cAB = Sim.curr > 0 ? C.wireR : C.wireB;
+        cCD = Sim.curr > 0 ? C.wireB : C.wireR;
+    }
+
+    let W = 2.4, L = 4.0;
+    let R = W/2;
+    let s = Math.sin(Sim.theta), c = Math.cos(Sim.theta);
+    
+    let Ax = -R*s, Ay = R*c;
+    let Cx = R*s, Cy = -R*c;
+
+    Render.cylinder([0,0,0], [0,0,1], 0.12, 11, C.shaft);
+
+    let coilR = 0.05;
+    let pA = [Ax,Ay,L/2], pB = [Ax,Ay,-L/2];
+    let pC = [Cx,Cy,-L/2], pD = [Cx,Cy,L/2];
+
+    Render.tube(pA, pB, coilR, cAB);
+    Render.tube(pC, pD, coilR, cCD);
+    Render.tube(pA, pD, coilR, C.wireG);
+    Render.tube(pB, pC, coilR, C.wireG);
+
+    drawFlow(pA, pB, pGap, Sim.chargePos);
+    drawFlow(pC, pD, pGap, Sim.chargePos);
+    drawFlow(pB, pC, pGap, Sim.chargePos);
+
+    // 连接与滑环
+    let pIn1 = [Ax*0.2, Ay*0.2, L/2+0.2];
+    let pR1_dyn = [0.28*(-s), 0.28*c, z1]; 
+    Render.tube(pA, pIn1, 0.03, cAB); 
+    Render.tube(pIn1, [0,0,z1], 0.03, cAB); 
+    Render.tube([0,0,z1], pR1_dyn, 0.03, cAB); 
+    Render.cube(pR1_dyn, [0.15,0.15,0.15], C.joint); 
+
+    let pIn2 = [Cx*0.2, Cy*0.2, L/2+0.2];
+    let pR2_dyn = [0.28*s, 0.28*(-c), z2]; 
+    Render.tube(pD, pIn2, 0.03, cCD); 
+    Render.tube(pIn2, [0,0,z2], 0.03, cCD); 
+    Render.tube([0,0,z2], pR2_dyn, 0.03, cCD); 
+    Render.cube(pR2_dyn, [0.15,0.15,0.15], C.joint); 
+
+    Render.cylinder([0,0,z1], [0,0,1], 0.3, 0.15, cAB); 
+    Render.cylinder([0,0,z2], [0,0,1], 0.3, 0.15, cCD); 
+
+    Render.render(ctx, cvs.width, cvs.height, viewMat);
+
+    drawScope();
+    draw2D(cAB, cCD);
+    requestAnimationFrame(loop);
+}
+
+function drawScope() {
+    let w = cvsS.width, h = cvsS.height;
+    ctxS.clearRect(0,0,w,h);
+    let subh = h/3;
+    let draw = (arr, col, yoff, name) => {
+        let mid = yoff + subh/2;
+        ctxS.strokeStyle='rgba(255,255,255,0.1)'; ctxS.beginPath(); ctxS.moveTo(0,mid); ctxS.lineTo(w,mid); ctxS.stroke();
+        ctxS.fillStyle=col; ctxS.font="12px Arial"; ctxS.fillText(name, 5, yoff+14);
+        if(arr.length<2) return;
+        let max = 0.1; arr.forEach(v=>max=Math.max(max, Math.abs(v))); max*=1.1;
+        ctxS.strokeStyle=col; ctxS.lineWidth=2; ctxS.beginPath();
+        for(let i=0; i<arr.length; i++) {
+            let x = i/(250)*w;
+            let y = mid - (arr[i]/max)*(subh/2-6);
+            i===0?ctxS.moveTo(x,y):ctxS.lineTo(x,y);
+        }
+        ctxS.stroke();
+    };
+    draw(Sim.hist.i, '#66ff66', 0, '电流 I');
+    draw(Sim.hist.e, '#ff8a80', subh, '电动势 ε');
+    draw(Sim.hist.f, '#8888ff', 2*subh, '磁通量 Φ');
+}
+
+function draw2D(cA, cC) {
+    let w = cvs2.width, h = cvs2.height;
+    ctx2.clearRect(0,0,w,h);
+    let cx=w/2, cy=h/2, r=Math.min(w,h)/2 - 10;
+    
+    ctx2.strokeStyle='#444';
+    for(let i=-2;i<=2;i++) { ctx2.beginPath(); ctx2.moveTo(10,cy+i*15); ctx2.lineTo(w-10,cy+i*15); ctx2.stroke(); }
+    
+    let s = Math.sin(Sim.theta), c = Math.cos(Sim.theta);
+    let ax = cx - r*s, ay = cy - r*c; 
+    let bx = cx + r*s, by = cy + r*c;
+
+    ctx2.strokeStyle='#aaa'; ctx2.beginPath(); ctx2.moveTo(ax,ay); ctx2.lineTo(bx,by); ctx2.stroke();
+    ctx2.fillStyle=cA; ctx2.beginPath(); ctx2.arc(ax,ay,5,0,7); ctx2.fill();
+    ctx2.fillStyle=cC; ctx2.beginPath(); ctx2.arc(bx,by,5,0,7); ctx2.fill();
+    ctx2.fillStyle='#fff'; ctx2.textAlign='center'; ctx2.textBaseline='middle'; ctx2.font='10px Arial';
+    ctx2.fillText('A', ax, ay); ctx2.fillText('C', bx, by);
+}
+
+function initInput() {
+    // 鼠标交互
+    let drag=false, lx, ly;
+    cvs.onmousedown = e => { drag=true; lx=e.clientX; ly=e.clientY; };
+    window.onmouseup = () => drag=false;
+    window.onmousemove = e => {
+        if(!drag) return;
+        Sim.cam.theta -= (e.clientX-lx)*0.01;
+        Sim.cam.phi += (e.clientY-ly)*0.01;
+        Sim.cam.phi = Math.max(-1.5, Math.min(1.5, Sim.cam.phi));
+        lx=e.clientX; ly=e.clientY;
+    };
+    cvs.onwheel = e => { e.preventDefault(); Sim.cam.r = Math.max(10, Math.min(50, Sim.cam.r + e.deltaY*0.05)); };
+
+    // === 触摸交互 (移动端优化) ===
+    let lastTouchX, lastTouchY;
+    let lastPinchDist = null;
+
+    cvs.ontouchstart = e => {
+        if (e.touches.length === 1) {
+            lastTouchX = e.touches[0].pageX;
+            lastTouchY = e.touches[0].pageY;
+        } else if (e.touches.length === 2) {
+            let dx = e.touches[0].pageX - e.touches[1].pageX;
+            let dy = e.touches[0].pageY - e.touches[1].pageY;
+            lastPinchDist = Math.hypot(dx, dy);
+        }
+    };
+
+    cvs.ontouchmove = e => {
+        e.preventDefault(); // 防止滚动页面
+        
+        // 单指拖拽旋转
+        if (e.touches.length === 1) {
+            let x = e.touches[0].pageX;
+            let y = e.touches[0].pageY;
+            Sim.cam.theta -= (x - lastTouchX) * 0.015;
+            Sim.cam.phi += (y - lastTouchY) * 0.015;
+            Sim.cam.phi = Math.max(-1.5, Math.min(1.5, Sim.cam.phi));
+            lastTouchX = x;
+            lastTouchY = y;
+        } 
+        // 双指捏合缩放
+        else if (e.touches.length === 2) {
+            let dx = e.touches[0].pageX - e.touches[1].pageX;
+            let dy = e.touches[0].pageY - e.touches[1].pageY;
+            let dist = Math.hypot(dx, dy);
+            
+            if (lastPinchDist) {
+                let diff = lastPinchDist - dist;
+                Sim.cam.r += diff * 0.1; // 调整缩放灵敏度
+                Sim.cam.r = Math.max(10, Math.min(60, Sim.cam.r));
+            }
+            lastPinchDist = dist;
+        }
+    };
+
+    cvs.ontouchend = () => {
+        lastPinchDist = null;
+    };
+
+    const bind = (id, k) => document.getElementById('i-'+id).oninput = e => {
+        P[k]=parseFloat(e.target.value); document.getElementById('v-'+id).innerText=P[k];
+    };
+    bind('omega','omega'); bind('B','B'); bind('S','S'); bind('R','R');
+    
+    document.getElementById('b-pause').onclick=()=>Sim.paused=!Sim.paused;
+    document.getElementById('b-reset').onclick=()=>Sim.theta=0;
+    document.getElementById('b-field').onclick=()=>Sim.showField=!Sim.showField;
+}
+
+window.onresize = () => {
+    cvs.width=window.innerWidth; cvs.height=window.innerHeight;
+    
+    // 动态调整示波器尺寸
+    let r = document.getElementById('panel-scope').getBoundingClientRect();
+    cvsS.width=r.width; cvsS.height=r.height;
+    
+    // 动态调整2D视图尺寸
+    r = document.getElementById('panel-2d').getBoundingClientRect();
+    cvs2.width=r.width; cvs2.height=r.height-20;
+};
+window.onresize();
+initInput();
+loop();
+</script>
+</body>
+</html>

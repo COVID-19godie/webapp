@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高中物理：追及相遇仿真 (修复增强版)</title>
+    <script src="https://lib.baomitu.com/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root {
+            --primary-dark: #2c3e50;
+            --primary-blue: #3498db;
+            --primary-orange: #e67e22;
+            --primary-purple: #9b59b6;
+            --bg-color: #f4f7f6;
+            --panel-bg: #ffffff;
+            --text-main: #2c3e50;
+            --radius: 12px;
+        }
+        
+        body {
+            font-family: "PingFang SC", sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { margin: 0 0 10px 0; color: var(--primary-dark); }
+        .subtitle { font-size: 14px; color: #7f8c8d; margin-bottom: 20px; }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1300px;
+            align-items: start;
+        }
+
+        /* 左侧面板 */
+        .control-panel {
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: var(--radius);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .section-header { font-weight: bold; font-size: 14px; border-bottom: 2px solid #eee; padding-bottom: 5px; margin-bottom: 5px; }
+        
+        .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .preset-btn {
+            padding: 8px; font-size: 12px; background: #f8f9fa; border: 1px solid #eee;
+            border-radius: 6px; cursor: pointer; transition: 0.2s; text-align: center;
+        }
+        .preset-btn:hover { background: #e2e6ea; }
+        .preset-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
+
+        .tab-header { display: flex; gap: 5px; background: #f1f3f5; padding: 3px; border-radius: 6px; margin-bottom: 10px; }
+        .tab-btn { flex: 1; padding: 6px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; color: #666; }
+        .tab-btn.active { background: white; color: var(--primary-dark); shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .tab-btn.active-a { color: var(--primary-blue); border-bottom: 2px solid var(--primary-blue); }
+        .tab-btn.active-b { color: var(--primary-orange); border-bottom: 2px solid var(--primary-orange); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .input-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+        .input-group input { width: 70px; padding: 4px; text-align: center; border: 1px solid #ccc; border-radius: 4px; transition: border-color 0.2s; }
+        .input-group input:focus { border-color: var(--primary-blue); outline: none; background: #f0f8ff; }
+
+        .setting-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+
+        .btn-group { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .btn { padding: 10px; border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: bold; }
+        .btn-start { background: var(--primary-dark); }
+        .btn-pause { background: #f39c12; }
+        .btn-reset { background: #e74c3c; }
+
+        /* 画布区域 */
+        .canvas-wrapper {
+            background: linear-gradient(to bottom, #2c3e50, #34495e);
+            border-radius: var(--radius);
+            position: relative;
+            height: 320px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        #simCanvas { width: 100%; height: 100%; display: block; cursor: default; }
+
+        .data-panel {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(255,255,255,0.9); backdrop-filter: blur(4px);
+            padding: 10px 15px; border-radius: 8px; font-family: monospace; font-size: 12px;
+            border-left: 4px solid var(--primary-blue);
+            pointer-events: none; 
+        }
+
+        .msg-box {
+            position: absolute; bottom: 10px; left: 10px;
+            background: rgba(0,0,0,0.6); color: #f1c40f;
+            padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: bold;
+            pointer-events: none;
+        }
+        
+        /* 拖拽提示 */
+        .drag-hint {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.3); color: white; padding: 4px 10px;
+            border-radius: 12px; font-size: 11px; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .canvas-wrapper:hover .drag-hint { opacity: 1; }
+
+        .charts-wrapper {
+            display: grid; 
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            background: white; padding: 15px; border-radius: var(--radius);
+            margin-top: 20px; height: 250px;
+        }
+        .chart-box { width: 100%; height: 100%; min-width: 0; }
+
+        .watermark {
+            position: fixed; bottom: 10px; right: 20px; text-align: right;
+            pointer-events: none; opacity: 0.3; color: #000; font-family: "Songti SC", serif;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="watermark">
+        <div>南阳一中 张铭戈</div>
+        <div style="font-size: 12px;">公众号: 戈悟志理琢瑷成器</div>
+    </div>
+
+    <h1>追及与相遇问题深度仿真</h1>
+    <div class="subtitle">固定坐标系 | 全程轨迹记录 | 文本+拖拽双向交互 (修复版)</div>
+
+    <div class="main-container">
+        <div class="control-panel">
+            <div>
+                <div class="section-header">情景预设</div>
+                <div class="preset-grid">
+                    <button class="preset-btn" onclick="loadPreset(1)">1. 匀加速追匀速</button>
+                    <button class="preset-btn" onclick="loadPreset(2)">2. 双加速追击</button>
+                    <button class="preset-btn" onclick="loadPreset(3)">3. 匀加速追减速</button>
+                    <button class="preset-btn" onclick="loadPreset(4)">4. 匀速追减速</button>
+                    <button class="preset-btn" onclick="loadPreset(5)">5. 刹车问题</button>
+                    <button class="preset-btn" onclick="loadPreset(6)">6. 减速追加速</button>
+                    <button class="preset-btn" onclick="loadPreset(7)">7. 双减速</button>
+                    <button class="preset-btn" onclick="loadPreset(8)">8. 匀速追加速</button>
+                </div>
+            </div>
+
+            <div class="tab-header">
+                <button class="tab-btn active active-a" onclick="switchTab('A')">物体 A (追)</button>
+                <button class="tab-btn" onclick="switchTab('B')">物体 B (逃)</button>
+            </div>
+            
+            <div id="tab-A" class="tab-content active">
+                <div class="input-group">
+                    <label>初位置 x₀</label>
+                    <input type="number" id="xA" oninput="syncFromInput('A')" placeholder="0">
+                </div>
+                <div class="input-group"><label>初速度 v₀</label><input type="number" id="vA"></div>
+                <div class="input-group"><label>加速度 a</label><input type="number" id="aA"></div>
+            </div>
+            <div id="tab-B" class="tab-content">
+                <div class="input-group">
+                    <label>初位置 x₀</label>
+                    <input type="number" id="xB" oninput="syncFromInput('B')" placeholder="0">
+                </div>
+                <div class="input-group"><label>初速度 v₀</label><input type="number" id="vB"></div>
+                <div class="input-group"><label>加速度 a</label><input type="number" id="aB"></div>
+            </div>
+
+            <div>
+                <div class="section-header">显示设置</div>
+                <div class="setting-row">
+                    <label>显示轨迹 (虚线)</label>
+                    <input type="checkbox" id="showTrails" checked>
+                </div>
+                <div class="setting-row">
+                    <label>显示坐标辅助线</label>
+                    <input type="checkbox" id="showGuides" checked>
+                </div>
+                <div class="setting-row">
+                    <label>真实刹车(v=0停止)</label>
+                    <input type="checkbox" id="brakeLock" checked>
+                </div>
+                <div class="setting-row">
+                    <label>坐标系范围 (m)</label>
+                    <span id="rangeDisplay" style="color:#888; font-size:12px;">自动</span>
+                </div>
+                
+                <div class="btn-group">
+                    <button class="btn btn-start" onclick="startSim()">开始</button>
+                    <button class="btn btn-pause" onclick="pauseSim()">暂停</button>
+                    <button class="btn btn-reset" onclick="resetSim()">重置</button>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="canvas-wrapper">
+                <canvas id="simCanvas"></canvas>
+                <div class="drag-hint">💡 操作提示：拖动小车 或 修改左侧x₀数值 均可设置起点</div>
+                <div class="data-panel">
+                    <div>t = <strong id="timeDisplay">0.00</strong> s</div>
+                    <div style="border-top:1px dashed #ccc; margin:5px 0; padding-top:5px;">
+                        位移差 Δx = <strong style="color:#9b59b6" id="deltaSDisplay">0.00</strong> m
+                    </div>
+                    <div style="color:#888;">(间距 d: <span id="gapDisplay">0.00</span> m)</div>
+                    <div style="margin-top:5px; display:flex; gap:10px;">
+                        <span style="color:var(--primary-blue)">vA: <span id="vaDisplay">0.00</span></span>
+                        <span style="color:var(--primary-orange)">vB: <span id="vbDisplay">0.00</span></span>
+                    </div>
+                </div>
+                <div class="msg-box" id="msgBox">准备就绪</div>
+            </div>
+
+            <div class="charts-wrapper">
+                <div class="chart-box"><canvas id="xtChart"></canvas></div>
+                <div class="chart-box"><canvas id="vtChart"></canvas></div>
+                <div class="chart-box"><canvas id="dxChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- 核心变量 ---
+    const STATE = {
+        t: 0, running: false, dt: 0.02,
+        objA: { x: 0, v: 0, a: 0, x0: 0, v0: 0, stopped: false },
+        objB: { x: 0, v: 0, a: 0, x0: 0, v0: 0, stopped: false },
+        history: { t:[], xA:[], xB:[], vA:[], vB:[] },
+        viewMaxX: 100, scale: 1, catchFlag: false,
+        dragging: null
+    };
+
+    const COLOR_A = '#3498db'; const COLOR_B = '#e67e22'; const COLOR_DX = '#9b59b6';
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const OFFSET_X = 30;
+    let chartXT, chartVT, chartDX;
+    let animId;
+
+    window.onload = () => { 
+        resize(); initChart(); loadPreset(5); 
+        initDragEvents();
+    };
+    window.onresize = () => { resize(); draw(); };
+
+    function resize() {
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * 2; canvas.height = rect.height * 2;
+        ctx.scale(2, 2);
+    }
+
+    // --- 交互逻辑 (修复后的关键代码) ---
+    function initDragEvents() {
+        const getMousePos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            // 物理横坐标
+            const cssX = e.clientX - rect.left;
+            const drawX = cssX * 2;
+            const physX = (drawX - OFFSET_X) / STATE.scale;
+            
+            // 垂直坐标 (CSS像素单位)
+            const cssY = e.clientY - rect.top;
+            return { x: physX, cssY: cssY };
+        };
+
+        canvas.addEventListener('mousedown', (e) => {
+            if(STATE.running) return;
+            const pos = getMousePos(e);
+            
+            // 计算小车的垂直位置 (CSS像素单位)
+            // canvas.height 是 2倍高度， ctx.scale(2,2)
+            // 视觉上的高度 h (CSS高度) = canvas.height / 2
+            const h = canvas.height / 2;
+            const groundY = h - 60; // 地面线 Y
+            
+            // 判定区域 (修复：移除错误的 /2，增加判定范围)
+            // 小车A在 groundY-10, 小车B在 groundY-50
+            const isNearY_A = Math.abs(pos.cssY - (groundY-10)) < 25; 
+            const isNearY_B = Math.abs(pos.cssY - (groundY-50)) < 25;
+            
+            const threshold = 80 / STATE.scale; // 宽容度：车身长度范围
+
+            const distA = Math.abs(pos.x - STATE.objA.x);
+            const distB = Math.abs(pos.x - STATE.objB.x);
+
+            if(distA < threshold && isNearY_A) STATE.dragging = 'A';
+            else if(distB < threshold && isNearY_B) STATE.dragging = 'B';
+            
+            if(STATE.dragging) canvas.style.cursor = 'grabbing';
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const pos = getMousePos(e);
+            const h = canvas.height / 2;
+            const groundY = h - 60;
+            
+            if(STATE.dragging && !STATE.running) {
+                let newX = Math.max(0, pos.x);
+                // 智能吸附：接近整数时自动吸附
+                if(Math.abs(newX - Math.round(newX)) < 0.2) newX = Math.round(newX);
+                
+                if(STATE.dragging === 'A') {
+                    STATE.objA.x = newX; STATE.objA.x0 = newX;
+                    document.getElementById('xA').value = newX.toFixed(1);
+                } else {
+                    STATE.objB.x = newX; STATE.objB.x0 = newX;
+                    document.getElementById('xB').value = newX.toFixed(1);
+                }
+                
+                draw();
+                updateUI();
+                updateCharts(true);
+            } else if(!STATE.running) {
+                // 悬停高亮检测 (修复：同样的Y轴判定修复)
+                const isNearY_A = Math.abs(pos.cssY - (groundY-10)) < 25;
+                const isNearY_B = Math.abs(pos.cssY - (groundY-50)) < 25;
+                const threshold = 80 / STATE.scale;
+                
+                const distA = Math.abs(pos.x - STATE.objA.x);
+                const distB = Math.abs(pos.x - STATE.objB.x);
+
+                if((distA < threshold && isNearY_A) || (distB < threshold && isNearY_B)) {
+                    canvas.style.cursor = 'grab';
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => { STATE.dragging = null; canvas.style.cursor = 'default'; });
+        canvas.addEventListener('mouseout', () => { STATE.dragging = null; canvas.style.cursor = 'default'; });
+    }
+
+    // 文本框输入同步 - 实时触发
+    function syncFromInput(who) {
+        if(STATE.running) return;
+        
+        const elA = document.getElementById('xA');
+        const elB = document.getElementById('xB');
+        
+        // 允许空值输入时不报错，仅当是有效数字时更新
+        if(elA.value !== '') {
+            const valA = parseFloat(elA.value);
+            if(!isNaN(valA)) { STATE.objA.x = valA; STATE.objA.x0 = valA; }
+        }
+        
+        if(elB.value !== '') {
+            const valB = parseFloat(elB.value);
+            if(!isNaN(valB)) { STATE.objB.x = valB; STATE.objB.x0 = valB; }
+        }
+
+        draw();
+        updateCharts(true);
+    }
+
+    // --- 核心逻辑 ---
+    function switchTab(t) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'active-a', 'active-b'));
+        event.target.classList.add('active', t==='A'?'active-a':'active-b');
+        document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+        document.getElementById(`tab-${t}`).style.display = 'block';
+    }
+
+    function loadPreset(id) {
+        const data = {
+            1: [0,0,3, 25,6,0], 2: [0,0,4, 25,2,1], 3: [0,0,4, 40,12,-1],
+            4: [0,10,0, 40,12,-2], 5: [0,20,-3, 30,5,0], 6: [0,18,-1, 25,0,2],
+            7: [0,20,-2, 50,12,-1], 8: [0,12,0, 25,0,3]
+        }[id];
+        
+        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.preset-btn')[id-1].classList.add('active');
+
+        setInputs('A', data[0], data[1], data[2]);
+        setInputs('B', data[3], data[4], data[5]);
+        
+        resetSim();
+        document.getElementById('msgBox').innerText = `已加载情景 ${id}`;
+    }
+
+    function setInputs(who, x, v, a) {
+        document.getElementById(`x${who}`).value = x;
+        document.getElementById(`v${who}`).value = v;
+        document.getElementById(`a${who}`).value = a;
+    }
+
+    function getInputs() {
+        return {
+            Ax: +document.getElementById('xA').value, Av: +document.getElementById('vA').value, Aa: +document.getElementById('aA').value,
+            Bx: +document.getElementById('xB').value, Bv: +document.getElementById('vB').value, Ba: +document.getElementById('aB').value
+        };
+    }
+
+    function calcViewRange() {
+        const inp = getInputs();
+        const tEnd = 15;
+        const maxPosA = inp.Ax + Math.max(0, inp.Av*tEnd + 0.5*inp.Aa*tEnd*tEnd);
+        const maxPosB = inp.Bx + Math.max(0, inp.Bv*tEnd + 0.5*inp.Ba*tEnd*tEnd);
+        let max = Math.max(100, maxPosA, maxPosB) * 1.1; 
+        STATE.viewMaxX = max;
+        const w = canvas.width / 2;
+        STATE.scale = (w - 60) / STATE.viewMaxX; 
+        document.getElementById('rangeDisplay').innerText = `0 - ${Math.round(max)} m`;
+    }
+
+    function resetSim() {
+        STATE.running = false; STATE.t = 0; STATE.catchFlag = false; STATE.dragging = null;
+        STATE.history = { t:[], xA:[], xB:[], vA:[], vB:[] };
+        cancelAnimationFrame(animId);
+        
+        const inp = getInputs();
+        STATE.objA = { x:inp.Ax, v:inp.Av, a:inp.Aa, x0:inp.Ax, v0:inp.Av, stopped:false };
+        STATE.objB = { x:inp.Bx, v:inp.Bv, a:inp.Ba, x0:inp.Bx, v0:inp.Bv, stopped:false };
+        
+        calcViewRange(); 
+        updateCharts(true);
+        draw();
+        document.getElementById('msgBox').innerText = "仿真已重置 (可拖拽/输入起点)";
+    }
+
+    function startSim() {
+        if(!STATE.running) {
+            if(STATE.t === 0) resetSim(); 
+            STATE.running = true;
+            loop();
+            document.getElementById('msgBox').innerText = "仿真运行中...";
+        }
+    }
+    function pauseSim() { STATE.running = false; document.getElementById('msgBox').innerText = "已暂停"; }
+
+    function loop() {
+        if(!STATE.running) return;
+        
+        STATE.t += STATE.dt;
+        const brake = document.getElementById('brakeLock').checked;
+
+        [STATE.objA, STATE.objB].forEach(o => {
+            if(!o.stopped) {
+                o.v += o.a * STATE.dt;
+                o.x += o.v * STATE.dt;
+                if(brake && o.a < 0 && o.v <= 0) { o.v = 0; o.stopped = true; }
+            }
+        });
+
+        if(!STATE.catchFlag && STATE.objA.x >= STATE.objB.x) {
+            STATE.catchFlag = true;
+            document.getElementById('msgBox').innerText = `🎉 追上了! t=${STATE.t.toFixed(2)}s, 位置=${STATE.objA.x.toFixed(1)}m`;
+        }
+
+        if(Math.floor(STATE.t*100)%5===0) {
+            STATE.history.t.push(STATE.t.toFixed(2));
+            STATE.history.xA.push(STATE.objA.x); STATE.history.xB.push(STATE.objB.x);
+            STATE.history.vA.push(STATE.objA.v); STATE.history.vB.push(STATE.objB.v);
+            updateCharts();
+        }
+
+        draw();
+        updateUI();
+        animId = requestAnimationFrame(loop);
+    }
+
+    function draw() {
+        const w = canvas.width / 2; const h = canvas.height / 2;
+        const groundY = h - 60;
+        
+        const grd = ctx.createLinearGradient(0,0,0,h);
+        grd.addColorStop(0, '#2c3e50'); grd.addColorStop(1, '#34495e');
+        ctx.fillStyle = grd; ctx.fillRect(0,0,w,h);
+        
+        if(document.getElementById('showTrails').checked) {
+            drawTrail(STATE.history.xA, groundY-10, COLOR_A, OFFSET_X);
+            drawTrail(STATE.history.xB, groundY-50, COLOR_B, OFFSET_X);
+        }
+
+        drawAxis(w, groundY, OFFSET_X);
+        drawCar(STATE.objA.x, groundY-10, COLOR_A, 'A', OFFSET_X, groundY);
+        drawCar(STATE.objB.x, groundY-50, COLOR_B, 'B', OFFSET_X, groundY);
+    }
+
+    function drawAxis(w, y, off) {
+        ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        
+        ctx.fillStyle = '#bdc3c7'; ctx.textAlign = 'center'; ctx.font = '10px Arial';
+        const step = STATE.viewMaxX / 10;
+        for(let v=0; v<=STATE.viewMaxX; v+=step) {
+            const px = off + v * STATE.scale;
+            if(px > w) break;
+            ctx.beginPath(); ctx.moveTo(px, y); ctx.lineTo(px, y+6); ctx.stroke();
+            ctx.fillText(Math.round(v), px, y+18);
+        }
+    }
+
+    function drawCar(xVal, y, color, label, off, groundY) {
+        const px = off + xVal * STATE.scale;
+        
+        if(document.getElementById('showGuides').checked) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(px + 20, y+10); ctx.lineTo(px + 20, groundY); ctx.stroke();
+            
+            ctx.font = 'bold 11px Arial';
+            const txt = xVal.toFixed(1) + 'm';
+            const tw = ctx.measureText(txt).width;
+            ctx.fillStyle = color; 
+            ctx.fillRect(px + 20 - tw/2 - 2, groundY + 22, tw+4, 14); 
+            ctx.fillStyle = 'white';
+            ctx.fillText(txt, px + 20, groundY + 33);
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(px, y);
+        ctx.scale(0.5, 0.5); 
+        
+        if(STATE.dragging === label) {
+            ctx.shadowColor = 'white'; ctx.shadowBlur = 20;
+        }
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(0,20); ctx.lineTo(80,20); ctx.quadraticCurveTo(90,20,90,10);
+        ctx.lineTo(85,0); ctx.lineTo(60,-5); ctx.lineTo(20,-5); ctx.lineTo(5,0);
+        ctx.quadraticCurveTo(-5,10,0,20); ctx.fill();
+        
+        ctx.fillStyle = '#222';
+        ctx.beginPath(); ctx.arc(15,20,8,0,6.28); ctx.arc(65,20,8,0,6.28); ctx.fill();
+        
+        ctx.fillStyle = 'white'; ctx.font = 'bold 16px Arial';
+        ctx.fillText(label, 40, -10);
+        ctx.restore();
+    }
+
+    function drawTrail(hist, y, color, off) {
+        ctx.fillStyle = color;
+        const step = Math.max(1, Math.floor(hist.length / 50)); 
+        for(let i=0; i<hist.length; i+=step) {
+            const px = off + hist[i] * STATE.scale;
+            ctx.beginPath(); ctx.arc(px, y+15, 2, 0, 6.28); ctx.fill();
+        }
+    }
+
+    function updateUI() {
+        document.getElementById('timeDisplay').innerText = STATE.t.toFixed(2);
+        const deltaS = (STATE.objA.x) - (STATE.objB.x);
+        document.getElementById('deltaSDisplay').innerText = deltaS.toFixed(2);
+        document.getElementById('gapDisplay').innerText = (STATE.objB.x - STATE.objA.x).toFixed(2);
+        document.getElementById('vaDisplay').innerText = STATE.objA.v.toFixed(2);
+        document.getElementById('vbDisplay').innerText = STATE.objB.v.toFixed(2);
+    }
+
+    function initChart() {
+        if(typeof Chart === 'undefined') {
+            console.error('Chart.js failed to load');
+            alert('警告：图表库加载失败，可能是网络原因。仿真动画仍可运行，但图表将无法显示。');
+            return;
+        }
+
+        const conf = { 
+            type:'line', 
+            options: { 
+                responsive:true, maintainAspectRatio:false, animation:false,
+                elements:{point:{radius:0}}, 
+                plugins:{legend:{labels:{boxWidth:10, font:{size:10}}}},
+                scales:{x:{ticks:{maxTicksLimit:5}}}
+            } 
+        };
+        
+        chartXT = new Chart(document.getElementById('xtChart'), {
+            ...conf,
+            data: { datasets: [{label:'A 位移', borderColor:COLOR_A, data:[]}, {label:'B 位移', borderColor:COLOR_B, data:[]}] }
+        });
+        
+        chartVT = new Chart(document.getElementById('vtChart'), {
+            ...conf,
+            data: { datasets: [{label:'A 速度', borderColor:COLOR_A, borderDash:[5,5], data:[]}, {label:'B 速度', borderColor:COLOR_B, data:[]}] }
+        });
+
+        chartDX = new Chart(document.getElementById('dxChart'), {
+            ...conf,
+            data: { 
+                datasets: [{
+                    label: '位置差 (xA-xB)', borderColor: COLOR_DX, backgroundColor: 'rgba(155, 89, 182, 0.1)', fill: true, data:[]
+                }] 
+            },
+            options: {
+                ...conf.options,
+                plugins: { legend: {labels:{boxWidth:10, font:{size:10}}}, title: { display: true, text: '相遇判据: Δx=0', font:{size:10} } },
+                scales: {
+                    x: {ticks:{maxTicksLimit:5}},
+                    y: {grid: { color: (ctx) => ctx.tick.value === 0 ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.1)' }}
+                }
+            }
+        });
+    }
+
+    function updateCharts(clear=false) {
+        if(!chartXT) return; // 安全检查
+
+        if(clear) {
+            chartXT.data.labels = []; chartXT.data.datasets.forEach(d=>d.data=[]);
+            chartVT.data.labels = []; chartVT.data.datasets.forEach(d=>d.data=[]);
+            chartDX.data.labels = []; chartDX.data.datasets.forEach(d=>d.data=[]);
+        } else {
+            chartXT.data.labels = STATE.history.t;
+            chartXT.data.datasets[0].data = STATE.history.xA;
+            chartXT.data.datasets[1].data = STATE.history.xB;
+            chartVT.data.labels = STATE.history.t;
+            chartVT.data.datasets[0].data = STATE.history.vA;
+            chartVT.data.datasets[1].data = STATE.history.vB;
+            const diffData = STATE.history.xA.map((val, i) => val - STATE.history.xB[i]);
+            chartDX.data.labels = STATE.history.t;
+            chartDX.data.datasets[0].data = diffData;
+        }
+        chartXT.update('none'); chartVT.update('none'); chartDX.update('none');
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D弹簧振子 - 教学显式版</title>
+    <style>
+        /* --- 全局布局 --- */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1e1e1e;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* 桌面端默认：左右布局 */
+        #viewport {
+            flex: 1; /* 3D视图占据剩余空间 */
+            position: relative;
+            overflow: hidden;
+            touch-action: none;
+            background: #1e1e1e;
+        }
+
+        #panel-container {
+            width: 320px;
+            background-color: #2d2d2d;
+            border-left: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* --- 面板内部组件 --- */
+        .panel-section {
+            padding: 12px;
+            border-bottom: 1px solid #3d3d3d;
+        }
+
+        .section-header {
+            font-size: 0.9rem;
+            color: #4db8ff;
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 控件样式 */
+        .control-row { margin-bottom: 8px; font-size: 0.85rem; color: #ccc; }
+        .control-row label { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        input[type="range"] { width: 100%; margin: 4px 0; cursor: pointer; }
+        
+        .checkbox-row {
+            display: flex; align-items: center; gap: 8px;
+            background: #383838; padding: 8px; border-radius: 4px;
+        }
+        input[type="checkbox"] { transform: scale(1.3); margin: 0; }
+
+        .btn-group { display: flex; gap: 8px; margin-top: 5px; }
+        button {
+            flex: 1; padding: 10px 0; border: none; border-radius: 4px;
+            font-weight: bold; cursor: pointer; color: white;
+            font-size: 0.9rem; transition: opacity 0.2s;
+        }
+        button:active { opacity: 0.8; }
+        .btn-play { background-color: #007acc; }
+        .btn-reset { background-color: #555; }
+        
+        /* 折叠参数按钮 (仅移动端) */
+        #toggle-params-btn {
+            display: none; /* 桌面端隐藏 */
+            width: 100%;
+            background: #333;
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 0.9rem;
+            border: none; border-bottom: 1px solid #444;
+            color: #bbb;
+        }
+        #toggle-params-btn::after { content: " ▼"; float: right; }
+        #toggle-params-btn.collapsed::after { content: " ▶"; }
+
+        /* 物理参数容器 */
+        #physics-controls {
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        /* 图表区域 */
+        #chart-wrapper {
+            flex: 1; /* 占满面板剩余高度 */
+            min-height: 0; /* 允许Flex子项收缩 */
+            position: relative;
+            background: #222;
+            margin: 10px;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        .overlay-info {
+            position: absolute; top: 10px; left: 10px; pointer-events: none;
+            background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 4px; font-size: 0.8rem;
+        }
+
+        /* --- 移动端适配 (核心修改) --- */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column; /* 改为上下布局 */
+            }
+
+            /* 上半部分：3D图 */
+            #viewport {
+                flex: none; /*以此高度为准*/
+                height: 55vh; 
+                border-bottom: 2px solid #444;
+            }
+
+            /* 下半部分：操作面板 */
+            #panel-container {
+                width: 100%;
+                flex: 1; /* 占据剩余高度 (45vh) */
+                border-left: none;
+            }
+
+            /* 物理参数 (m, k, c) 默认折叠 */
+            #toggle-params-btn { display: block; }
+            #physics-controls {
+                max-height: 200px; /* 展开时的高度 */
+                background: #2a2a2a;
+            }
+            #physics-controls.collapsed {
+                max-height: 0;
+                padding: 0;
+                border-bottom: none;
+            }
+
+            /* 压缩间距以适应小屏 */
+            .panel-section { padding: 8px 12px; }
+            .control-row { margin-bottom: 4px; }
+            input[type="range"] { margin: 2px 0; }
+            
+            /* 图表容器在移动端 */
+            #chart-wrapper {
+                margin: 0 8px 8px 8px; /* 紧贴底部 */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="viewport">
+        <canvas id="mainCanvas"></canvas>
+        <div class="overlay-info">
+            <span style="color:#ff4444">● 振子</span> | 
+            <span style="color:rgba(255, 100, 100, 0.5)">○ 频闪残影</span>
+            <br>拖动屏幕旋转视角
+        </div>
+    </div>
+
+    <div id="panel-container">
+        
+        <button id="toggle-params-btn" class="collapsed">物理参数设置 (m, k, c)</button>
+
+        <div id="physics-controls" class="panel-section collapsed">
+            <div class="control-row">
+                <label>质量 m: <span id="val-m">2.0</span> kg</label>
+                <input type="range" id="input-m" min="0.5" max="10" step="0.1" value="2.0">
+            </div>
+            <div class="control-row">
+                <label>劲度系数 k: <span id="val-k">15</span> N/m</label>
+                <input type="range" id="input-k" min="1" max="50" step="1" value="15">
+            </div>
+            <div class="control-row">
+                <label>阻尼系数 c: <span id="val-c">0.0</span></label>
+                <input type="range" id="input-c" min="0" max="5" step="0.1" value="0.0">
+            </div>
+            <div class="control-row">
+                <label>初始位置: <span id="val-pos">3.0</span></label>
+                <input type="range" id="input-pos" min="-5" max="5" step="0.1" value="3.0">
+            </div>
+        </div>
+
+        <div class="panel-section" style="background: #333;">
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                <div class="checkbox-row" style="flex: 1;">
+                    <input type="checkbox" id="input-strobe">
+                    <span style="font-size: 0.9rem; font-weight: bold;">开启频闪</span>
+                </div>
+                <div style="flex: 1; padding: 0 5px;">
+                     <label style="font-size: 0.75rem; color:#aaa;">频闪间隔: <span id="val-strobe">0.2</span>s</label>
+                     <input type="range" id="input-strobe-interval" min="0.05" max="0.8" step="0.05" value="0.2">
+                </div>
+            </div>
+            
+            <div class="btn-group">
+                <button class="btn-play" id="btn-toggle">暂停 / 继续</button>
+                <button class="btn-reset" id="btn-reset">重置 & 清除</button>
+            </div>
+        </div>
+
+        <div class="section-header" style="padding: 0 12px; margin-top:5px;">
+            实时位移 (x-t) 图像
+        </div>
+        <div id="chart-wrapper">
+            <canvas id="chartCanvas"></canvas>
+        </div>
+
+    </div>
+
+<script>
+    // --- 移动端折叠逻辑 ---
+    const toggleBtn = document.getElementById('toggle-params-btn');
+    const physicsControls = document.getElementById('physics-controls');
+    
+    // 初始化：如果是窄屏，添加 collapsed 类
+    if (window.innerWidth <= 768) {
+        physicsControls.classList.add('collapsed');
+    } else {
+        physicsControls.classList.remove('collapsed');
+        toggleBtn.classList.remove('collapsed');
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        const isCollapsed = physicsControls.classList.contains('collapsed');
+        if (isCollapsed) {
+            physicsControls.classList.remove('collapsed');
+            toggleBtn.classList.remove('collapsed');
+        } else {
+            physicsControls.classList.add('collapsed');
+            toggleBtn.classList.add('collapsed');
+        }
+    });
+
+    // --- 核心物理引擎 ---
+    const physics = {
+        m: 2.0, k: 15.0, c: 0.0,
+        y: 3.0, v: 0.0, t: 0.0,
+        initialY: 3.0, running: true,
+        strobeEnabled: false, strobeInterval: 0.2, lastStrobe: 0,
+        ghosts: [],
+
+        update: function(dt) {
+            if (!this.running) return;
+            const force = -this.k * this.y - this.c * this.v;
+            const acc = force / this.m;
+            this.v += acc * dt;
+            this.y += this.v * dt;
+            this.t += dt;
+
+            // 频闪记录
+            if (this.strobeEnabled && (this.t - this.lastStrobe > this.strobeInterval)) {
+                this.ghosts.push(this.y);
+                if (this.ghosts.length > 80) this.ghosts.shift();
+                this.lastStrobe = this.t;
+            }
+        },
+        reset: function() {
+            this.y = this.initialY; this.v = 0; this.t = 0; 
+            this.ghosts = []; chartData = [];
+        }
+    };
+
+    // --- 3D 视图渲染 ---
+    const view = {
+        canvas: document.getElementById('mainCanvas'),
+        ctx: document.getElementById('mainCanvas').getContext('2d'),
+        width: 0, height: 0,
+        angle: Math.PI / 5, heightAngle: 0.3, zoom: 45,
+
+        project: function(x, y, z) {
+            const cx = Math.cos(this.angle), sx = Math.sin(this.angle);
+            const rx = x * cx - z * sx, rz = x * sx + z * cx;
+            const scale = this.zoom * (60 / (60 + rz));
+            // 垂直居中修正，让0点位于视觉中心
+            const centerOffset = this.height * 0.15;
+            return {
+                x: this.width / 2 + rx * scale,
+                y: (this.height / 2 + centerOffset) - y * scale + rz * this.heightAngle * 20,
+                s: scale
+            };
+        },
+        drawBall: function(y, opacity) {
+            const p = this.project(0, y, 0);
+            const r = 18 * (p.s / 35);
+            
+            // 阴影
+            if (opacity > 0.8) {
+                const s = this.project(0, -6, 0);
+                this.ctx.beginPath(); this.ctx.fillStyle = `rgba(0,0,0,${0.2 * opacity})`;
+                this.ctx.ellipse(s.x, s.y, 22*s.s/35, 12*s.s/35, 0, 0, Math.PI*2);
+                this.ctx.fill();
+            }
+
+            // 球
+            const g = this.ctx.createRadialGradient(p.x-r/3, p.y-r/3, r/5, p.x, p.y, r);
+            if (opacity > 0.8) {
+                g.addColorStop(0, '#ff6666'); g.addColorStop(1, '#aa0000');
+            } else {
+                g.addColorStop(0, `rgba(255,100,100,${opacity})`); 
+                g.addColorStop(1, `rgba(170,0,0,${opacity})`);
+            }
+            this.ctx.beginPath(); this.ctx.fillStyle = g;
+            this.ctx.arc(p.x, p.y, r, 0, Math.PI*2); this.ctx.fill();
+        }
+    };
+
+    // --- 图表渲染 ---
+    const chartCanvas = document.getElementById('chartCanvas');
+    const chartCtx = chartCanvas.getContext('2d');
+    let chartData = [];
+
+    function drawChart() {
+        const w = chartCanvas.width, h = chartCanvas.height;
+        chartCtx.clearRect(0,0,w,h);
+        
+        // 网格线
+        chartCtx.strokeStyle = '#444'; chartCtx.lineWidth = 1;
+        chartCtx.beginPath(); chartCtx.moveTo(0, h/2); chartCtx.lineTo(w, h/2); chartCtx.stroke();
+        
+        if (chartData.length < 2) return;
+        
+        chartCtx.strokeStyle = '#4db8ff'; chartCtx.lineWidth = 2; chartCtx.beginPath();
+        const max = 200;
+        const start = Math.max(0, chartData.length - max);
+        for(let i=start; i<chartData.length; i++) {
+            const x = ((i - start) / (Math.min(chartData.length, max) - 1 || 1)) * w;
+            const y = h/2 - (chartData[i] / 6) * (h/2 * 0.9);
+            if (i==start) chartCtx.moveTo(x,y); else chartCtx.lineTo(x,y);
+        }
+        chartCtx.stroke();
+    }
+
+    // --- 主循环 ---
+    function loop() {
+        // 1. 物理步进
+        for(let i=0; i<8; i++) physics.update(0.016/8);
+        
+        // 2. 记录图表数据
+        if(physics.running && physics.t % 0.05 < 0.02) {
+            chartData.push(physics.y);
+            if(chartData.length > 250) chartData.shift();
+        }
+
+        // 3. 适配尺寸
+        view.width = view.canvas.width = view.canvas.clientWidth;
+        view.height = view.canvas.height = view.canvas.clientHeight;
+        chartCanvas.width = chartCanvas.clientWidth;
+        chartCanvas.height = chartCanvas.clientHeight;
+
+        // 4. 绘制3D场景
+        const ctx = view.ctx;
+        // 4.1 环境
+        const size=8, gy=-6;
+        ctx.beginPath(); ctx.strokeStyle='rgba(255,255,255,0.1)';
+        for(let i=-size; i<=size; i+=2) {
+            let p1=view.project(i,gy,-size), p2=view.project(i,gy,size);
+            ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y);
+            let p3=view.project(-size,gy,i), p4=view.project(size,gy,i);
+            ctx.moveTo(p3.x,p3.y); ctx.lineTo(p4.x,p4.y);
+        }
+        ctx.stroke();
+
+        // 4.2 支架
+        ctx.beginPath(); ctx.lineWidth=4; ctx.strokeStyle='#999';
+        let s1=view.project(-2.5,6,0), s2=view.project(2.5,6,0);
+        ctx.moveTo(s1.x,s1.y); ctx.lineTo(s2.x,s2.y); ctx.stroke();
+        
+        // 4.3 频闪残影
+        physics.ghosts.forEach(gy => view.drawBall(gy, 0.3));
+
+        // 4.4 弹簧
+        ctx.beginPath(); ctx.lineWidth=2; ctx.strokeStyle='#ddd';
+        const topY=6, ballY=physics.y+1.1, pts=60;
+        for(let i=0; i<=pts; i++) {
+            const t=i/pts, ang=t*Math.PI*20;
+            const p = view.project(Math.cos(ang), topY+(ballY-topY)*t, Math.sin(ang));
+            if(i==0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+        }
+        ctx.stroke();
+
+        // 4.5 实体球
+        view.drawBall(physics.y, 1.0);
+
+        // 5. 绘制图表
+        drawChart();
+
+        requestAnimationFrame(loop);
+    }
+
+    // --- 交互绑定 ---
+    const bind = (id, key) => {
+        document.getElementById('input-'+id).addEventListener('input', e => {
+            const v = parseFloat(e.target.value);
+            document.getElementById('val-'+id).innerText = key === 'strobe-interval' ? v.toFixed(2) : v.toFixed(1);
+            if(key === 'pos') { physics.initialY = v; if(!physics.running) physics.y = v; }
+            else if(key === 'strobe-interval') physics.strobeInterval = v;
+            else physics[key] = v;
+        });
+    };
+    bind('m','m'); bind('k','k'); bind('c','c'); bind('pos','pos'); bind('strobe-interval','strobe-interval');
+
+    document.getElementById('input-strobe').onchange = e => { physics.strobeEnabled = e.target.checked; if(!e.target.checked) physics.ghosts=[]; };
+    document.getElementById('btn-toggle').onclick = () => physics.running = !physics.running;
+    document.getElementById('btn-reset').onclick = () => { physics.reset(); document.getElementById('input-pos').value = physics.initialY; };
+
+    // 触控/鼠标旋转
+    let dragging=false, lx=0;
+    const vp = document.getElementById('viewport');
+    const start = x => { dragging=true; lx=x; };
+    const move = x => { if(dragging) { view.angle += (x-lx)*0.005; lx=x; } };
+    const end = () => dragging=false;
+
+    vp.onmousedown = e => start(e.clientX);
+    window.onmousemove = e => move(e.clientX);
+    window.onmouseup = end;
+    vp.ontouchstart = e => { if(e.touches.length==1) start(e.touches[0].clientX); };
+    window.ontouchmove = e => { if(e.touches.length==1) move(e.touches[0].clientX); };
+    window.ontouchend = end;
+
+    loop();
+
+</script>
+</body>
+</html>

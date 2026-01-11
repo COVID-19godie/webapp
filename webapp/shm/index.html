@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物理复习 - 运动与能量图像仿真 (Watermarked)</title>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Microsoft YaHei", sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+            overflow: hidden;
+        }
+
+        header {
+            width: 100%;
+            background-color: #fff;
+            padding: 10px 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 { margin: 0; font-size: 22px; }
+        .highlight { background-color: #ffff00; padding: 2px 5px; }
+
+        .container {
+            display: flex;
+            width: 98%;
+            max-width: 1400px;
+            height: calc(100vh - 70px);
+            gap: 15px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        /* 左侧边栏 */
+        .sidebar {
+            width: 360px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            background: #e7f1ff;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border: 1px solid #b6d4fe;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        input[type=range] { flex: 1; cursor: pointer; }
+        input[type=checkbox] { transform: scale(1.2); margin-right: 8px; cursor: pointer; }
+
+        /* 能量函数图像面板 */
+        .energy-graph-panel {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 0;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            position: relative;
+            height: 180px;
+            overflow: hidden;
+        }
+        
+        .graph-title {
+            position: absolute;
+            top: 5px;
+            left: 10px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 5;
+            background: rgba(255,255,255,0.8);
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        .graph-legend {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            font-size: 11px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            z-index: 5;
+            background: rgba(255,255,255,0.8);
+            padding: 2px;
+            border-radius: 3px;
+        }
+        .g-legend-item { display: flex; align-items: center; margin-bottom: 2px; }
+        .line-sw { width: 12px; height: 2px; margin-right: 4px; display: inline-block;}
+
+        /* 按钮 */
+        .mode-btn {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 6px;
+            text-align: left;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .mode-btn:hover { background-color: #e9ecef; }
+        .mode-btn.active { background-color: #007bff; color: white; border-color: #007bff; }
+
+        /* 底部信息 */
+        .info-panel {
+            margin-top: auto;
+            background: #f1f3f5;
+            padding: 10px;
+            border-radius: 6px;
+            border-left: 5px solid #007bff;
+        }
+        .info-row { margin-bottom: 5px; display: flex; justify-content: space-between; font-size: 13px;}
+
+        /* 画布 */
+        .canvas-container {
+            flex: 1;
+            background-color: #000;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(255,255,255,0.05);
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        /* 主画面图例 */
+        .legend {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(40, 40, 40, 0.85);
+            padding: 8px;
+            border-radius: 4px;
+            color: #ccc;
+            font-size: 12px;
+            pointer-events: none;
+            border: 1px solid #555;
+            z-index: 5;
+        }
+        .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+        .dash-line { width: 20px; height: 2px; border-bottom: 2px dashed #FFFF00; margin-right: 8px; }
+
+        /* --- 水印样式 --- */
+        .watermark {
+            position: absolute;
+            bottom: 15px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.4); /* 半透明白色 */
+            font-size: 16px;
+            font-weight: bold;
+            pointer-events: none; /* 不阻挡鼠标事件 */
+            z-index: 10;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5); /* 加一点阴影提高对比度 */
+            user-select: none;
+        }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1><span class="highlight">复习引入</span> 做简谐运动的物体受到什么样的力呢？</h1>
+</header>
+
+<div class="container">
+    <div class="sidebar">
+        <div class="control-panel">
+            <div class="control-row">
+                <span style="width:70px; font-weight:bold;">仿真速度:</span>
+                <input type="range" id="speedSlider" min="0" max="2" step="0.1" value="1" oninput="updateSpeed(this.value)">
+                <span id="speedDisplay" style="margin-left:5px; width:30px; font-size:12px;">1.0x</span>
+            </div>
+            <div class="control-row" style="cursor: pointer;" onclick="toggleTraceFromDiv()">
+                <span style="width:70px; font-weight:bold;">显示轨迹:</span>
+                <input type="checkbox" id="traceToggle" checked onchange="updateTrace(this.checked)">
+            </div>
+        </div>
+
+        <div class="energy-graph-panel">
+            <div class="graph-title">能量变化图像 ($E-t$)</div>
+            <div class="graph-legend">
+                <div class="g-legend-item"><span class="line-sw" style="background:#28a745"></span><span>总能 $E$</span></div>
+                <div class="g-legend-item"><span class="line-sw" style="background:#007bff"></span><span>动能 $E_k$</span></div>
+                <div class="g-legend-item"><span class="line-sw" style="background:#ffc107"></span><span>势能 $E_p$</span></div>
+            </div>
+            <canvas id="energyCanvas"></canvas>
+        </div>
+
+        <div style="flex:1; overflow-y:auto;">
+            <button class="mode-btn" onclick="setMode('uniform')">1. 匀速直线运动</button>
+            <button class="mode-btn" onclick="setMode('accel')">2. 匀变速直线运动</button>
+            <button class="mode-btn" onclick="setMode('projectile')">3. (类)平抛运动</button>
+            <button class="mode-btn" onclick="setMode('circular')">4. 匀速圆周运动</button>
+            <button class="mode-btn active" onclick="setMode('shm')">5. 简谐运动 (本课重点)</button>
+        </div>
+
+        <div class="info-panel" id="infoPanel">
+            <div style="font-weight:bold; margin-bottom:8px;" id="infoModeName">简谐运动</div>
+            <div class="info-row">
+                <span>受力方向：</span><strong style="color: #d63384;" id="infoDir">指向平衡位置</strong>
+            </div>
+            <div class="info-row">
+                <span>受力大小：</span><strong style="color: #d63384;" id="infoMag">随位移变化</strong>
+            </div>
+            <div style="font-size: 12px; color: #555; margin-top:5px; border-top:1px solid #ccc; padding-top:5px;">
+                <span id="infoDesc">F = -kx</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="simCanvas"></canvas>
+        <div class="legend">
+            <div class="legend-item"><div class="dot" style="background:linear-gradient(to right, #88ff88, green)"></div>物体</div>
+            <div class="legend-item"><div class="dot" style="background:red"></div>合外力 F</div>
+            <div class="legend-item"><div class="dot" style="background:#00bfff"></div>速度 v</div>
+            <div class="legend-item"><div class="dash-line"></div>轨迹</div>
+        </div>
+
+        <div class="watermark">南阳一中 张铭戈 | 公众号: 戈悟志理琢瑷成器</div>
+    </div>
+</div>
+
+<script>
+    // --- 主画布 ---
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // --- 能量画布 ---
+    const eCanvas = document.getElementById('energyCanvas');
+    const eCtx = eCanvas.getContext('2d');
+
+    let width, height;      // 主画布尺寸
+    let eWidth, eHeight;    // 能量画布尺寸
+
+    // 仿真变量
+    let simTime = 0;
+    let lastFrameTime = 0;
+    let speedFactor = 1.0;
+    let mode = 'shm';
+    let showTrace = true;
+    let pathPoints = [];
+    const maxPathPoints = 400;
+
+    // 能量历史数据 (用于绘制曲线)
+    let energyHistory = []; 
+    const maxHistoryLen = 300; // 能量图横向分辨率
+
+    // 物体
+    const ball = { x: 0, y: 0, vx: 0, vy: 0, radius: 15 };
+
+    // 调整大小
+    function resize() {
+        const container = document.querySelector('.canvas-container');
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+        width = canvas.width;
+        height = canvas.height;
+        pathPoints = []; // 重置轨迹
+
+        // 调整能量画布
+        const eContainer = document.querySelector('.energy-graph-panel');
+        eCanvas.width = eContainer.clientWidth;
+        eCanvas.height = eContainer.clientHeight;
+        eWidth = eCanvas.width;
+        eHeight = eCanvas.height;
+    }
+    window.addEventListener('resize', resize);
+    resize(); // 初始调用
+
+    // 交互控制
+    function updateSpeed(val) {
+        speedFactor = parseFloat(val);
+        document.getElementById('speedDisplay').innerText = speedFactor.toFixed(1) + "x";
+    }
+    function updateTrace(isChecked) {
+        showTrace = isChecked;
+        if(!showTrace) pathPoints = [];
+    }
+    function toggleTraceFromDiv() {
+        const cb = document.getElementById('traceToggle');
+        cb.checked = !cb.checked;
+        updateTrace(cb.checked);
+    }
+
+    // 绘图辅助
+    function drawArrow(fromX, fromY, vecX, vecY, color, scale = 1, label = "") {
+        if (Math.abs(vecX) < 1 && Math.abs(vecY) < 1) return;
+        const toX = fromX + vecX * scale;
+        const toY = fromY + vecY * scale;
+        const angle = Math.atan2(toY - fromY, toX - fromX);
+        const headlen = 12;
+
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI/6), toY - headlen * Math.sin(angle - Math.PI/6));
+        ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI/6), toY - headlen * Math.sin(angle + Math.PI/6));
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        if(label) {
+            ctx.fillStyle = color;
+            ctx.font = "bold 16px Arial";
+            ctx.fillText(label, toX + 10, toY);
+        }
+    }
+
+    function drawSpring(x1, y1, x2, y2) {
+        const segments = 24;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.sqrt(dx*dx + dy*dy);
+        const angle = Math.atan2(dy, dx);
+        
+        ctx.save();
+        ctx.translate(x1, y1);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const step = length / segments;
+        const amp = 12;
+        for (let i = 1; i < segments; i++) {
+            let currentAmp = (i < 3 || i > segments - 3) ? 0 : amp;
+            ctx.lineTo(i * step, (i % 2 === 0 ? 1 : -1) * currentAmp);
+        }
+        ctx.lineTo(length, 0);
+        ctx.strokeStyle = '#ddd';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 绘制轨迹 (黄色虚线)
+    function drawTrajectory() {
+        if (!showTrace || pathPoints.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = '#FFFF00'; // 黄色
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]); 
+        ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+        for (let i = 1; i < pathPoints.length; i++) {
+            const dist = Math.hypot(pathPoints[i].x - pathPoints[i-1].x, pathPoints[i].y - pathPoints[i-1].y);
+            if (dist > 100) ctx.moveTo(pathPoints[i].x, pathPoints[i].y);
+            else ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    function drawBackground() {
+        ctx.beginPath();
+        ctx.strokeStyle = '#333';
+        ctx.setLineDash([2, 2]);
+        if (['shm', 'uniform', 'accel'].includes(mode)) {
+             ctx.moveTo(0, height/2);
+             ctx.lineTo(width, height/2);
+        }
+        if (mode === 'shm') {
+            const cx = width/2;
+            const cy = height/2;
+            ctx.moveTo(cx, cy - 60); ctx.lineTo(cx, cy + 60);
+            ctx.fillStyle = '#888'; ctx.font = "14px Arial";
+            ctx.fillText("O", cx - 5, cy + 80);
+            ctx.fillStyle = '#ff4444';
+            ctx.fillRect(cx - 150, cy - 5, 2, 10);
+            ctx.fillRect(cx + 150, cy - 5, 2, 10);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // --- 绘制能量曲线函数 ---
+    function drawEnergyGraph(maxE) {
+        eCtx.clearRect(0, 0, eWidth, eHeight);
+        
+        // 绘制背景网格
+        eCtx.strokeStyle = '#f0f0f0';
+        eCtx.lineWidth = 1;
+        eCtx.beginPath();
+        eCtx.moveTo(0, eHeight/2); eCtx.lineTo(eWidth, eHeight/2); // 中线
+        eCtx.stroke();
+
+        if (energyHistory.length < 2) return;
+
+        // 辅助绘制单条线的函数
+        const drawLine = (dataKey, color, lineWidth=2) => {
+            eCtx.beginPath();
+            eCtx.strokeStyle = color;
+            eCtx.lineWidth = lineWidth;
+            
+            // X轴步长
+            const stepX = eWidth / (maxHistoryLen - 1);
+            
+            for (let i = 0; i < energyHistory.length; i++) {
+                const val = energyHistory[i][dataKey];
+                // Y轴映射：0在下，maxE在上。保留上下边距 10px
+                const availableH = eHeight - 20;
+                // 防止 maxE 为 0
+                const safeMax = maxE > 0.1 ? maxE : 1; 
+                const y = eHeight - 10 - (val / safeMax) * availableH;
+                const x = i * stepX;
+                
+                if (i === 0) eCtx.moveTo(x, y);
+                else eCtx.lineTo(x, y);
+            }
+            eCtx.stroke();
+        };
+
+        // 依次绘制：势能(黄) -> 动能(蓝) -> 总能(绿)
+        drawLine('ep', '#ffc107', 2);
+        drawLine('ek', '#007bff', 2);
+        drawLine('et', '#28a745', 3); // 总能稍微粗一点
+    }
+
+    // 核心动画循环
+    function animate(timestamp) {
+        if (!lastFrameTime) lastFrameTime = timestamp;
+        const dt = (timestamp - lastFrameTime) / 1000;
+        lastFrameTime = timestamp;
+        simTime += dt * speedFactor;
+
+        ctx.clearRect(0, 0, width, height);
+        drawBackground();
+
+        let forceX = 0, forceY = 0;
+        const cx = width / 2;
+        const cy = height / 2;
+        
+        // 能量计算临时变量
+        let currentEk = 0, currentEp = 0, currentEt = 0, maxRefEnergy = 100;
+
+        if (mode === 'uniform') {
+            const v = 150; 
+            ball.x = ((simTime * v) % (width + 100)) - 50; 
+            ball.y = cy;
+            ball.vx = v; ball.vy = 0;
+            currentEk = 0.5 * v * v; currentEp = 0;
+            maxRefEnergy = currentEk * 1.2; 
+        } 
+        else if (mode === 'accel') {
+            const T = 4;
+            const tLoop = simTime % T;
+            const a = 60;
+            let speed = 0;
+            if(tLoop < 3.5) {
+                ball.x = 50 + 0.5 * a * tLoop * tLoop;
+                speed = a * tLoop;
+                forceX = 50; 
+            } else {
+                const ratio = (tLoop - 3.5)/0.5;
+                ball.x = (50 + 0.5 * a * 3.5 * 3.5) * (1-ratio) + 50 * ratio;
+                speed = 0; forceX = 0;
+            }
+            ball.y = cy; ball.vx = speed; ball.vy = 0; forceY = 0;
+            currentEk = 0.5 * speed * speed; currentEp = 0;
+            maxRefEnergy = 0.5 * (a*3.5)*(a*3.5) * 1.1; 
+        }
+        else if (mode === 'projectile') {
+            const v0 = 150; const g = 150;
+            const tLoop = simTime % 2.5; 
+            ball.x = 100 + v0 * tLoop;
+            ball.y = 100 + 0.5 * g * tLoop * tLoop;
+            ball.vx = v0; ball.vy = g * tLoop;
+            forceX = 0; forceY = 60;
+            
+            const groundY = height;
+            const h = Math.max(0, groundY - ball.y);
+            const m = 0.02; // 虚拟质量
+            currentEk = 0.5 * (ball.vx**2 + ball.vy**2) * m;
+            currentEp = 150 * h * m; // mgh
+            
+            const startE = 0.5*(v0**2)*m + 150*(groundY-100)*m;
+            maxRefEnergy = startE * 1.1;
+        }
+        else if (mode === 'circular') {
+            const R = 140; const omega = 1.5;
+            ball.x = cx + R * Math.cos(omega * simTime);
+            ball.y = cy + R * Math.sin(omega * simTime);
+            ball.vx = -R * omega * Math.sin(omega * simTime);
+            ball.vy = R * omega * Math.cos(omega * simTime);
+            const dx = cx - ball.x; const dy = cy - ball.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            forceX = (dx/dist) * 60; forceY = (dy/dist) * 60;
+            
+            currentEk = 0.5 * (R*omega)**2; currentEp = 0;
+            maxRefEnergy = currentEk * 1.5;
+        }
+        else if (mode === 'shm') {
+            const A = 150; const omega = 2;
+            const xDisp = A * Math.cos(omega * simTime);
+            ball.x = cx + xDisp; ball.y = cy;
+            ball.vx = -A * omega * Math.sin(omega * simTime); ball.vy = 0;
+            forceX = -xDisp * 0.6; forceY = 0;
+
+            // 简谐能量归一化
+            const ratioV = Math.abs(ball.vx) / (A * omega); // 0~1
+            const ratioX = Math.abs(xDisp) / A; // 0~1
+            
+            currentEk = ratioV * ratioV * 100;
+            currentEp = ratioX * ratioX * 100;
+            maxRefEnergy = 110; 
+
+            ctx.fillStyle = '#555';
+            ctx.fillRect(cx - 200, cy - 25, 10, 50);
+            drawSpring(cx - 200, cy, ball.x, ball.y);
+        }
+
+        // --- 记录并绘制能量图 ---
+        currentEt = currentEk + currentEp;
+        
+        energyHistory.push({ ek: currentEk, ep: currentEp, et: currentEt });
+        if (energyHistory.length > maxHistoryLen) {
+            energyHistory.shift();
+        }
+        drawEnergyGraph(maxRefEnergy);
+
+
+        // --- 轨迹绘制 ---
+        if (showTrace) {
+            if (pathPoints.length === 0 || Math.hypot(ball.x - pathPoints[pathPoints.length-1].x, ball.y - pathPoints[pathPoints.length-1].y) > 2) {
+                pathPoints.push({x: ball.x, y: ball.y});
+                if (pathPoints.length > maxPathPoints) pathPoints.shift();
+            }
+            drawTrajectory();
+        }
+
+        // --- 绘制物体与矢量 ---
+        drawArrow(ball.x, ball.y, forceX, forceY, 'red', 1, "F");
+        drawArrow(ball.x, ball.y, ball.vx, ball.vy, '#00bfff', 0.4, "v");
+
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        const grd = ctx.createRadialGradient(ball.x - 5, ball.y - 5, 2, ball.x, ball.y, ball.radius);
+        grd.addColorStop(0, "#adff2f");
+        grd.addColorStop(1, "#32cd32");
+        ctx.fillStyle = grd;
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        requestAnimationFrame(animate);
+    }
+
+    const uiData = {
+        'uniform': { title: '1. 匀速直线运动', dir: '无 ( $F_{合}=0$ )', mag: '$0$', desc: '动能恒定，无做功。' },
+        'accel': { title: '2. 匀变速直线运动', dir: '与速度共线', mag: '不变', desc: '外力做功，总能量改变。' },
+        'projectile': { title: '3. (类) 平抛运动', dir: '与初速度垂直', mag: '不变 (重力)', desc: '重力做功，势能转动能。' },
+        'circular': { title: '4. 匀速圆周运动', dir: '指向圆心', mag: '不变', desc: '力不做功 (垂直速度)。' },
+        'shm': { title: '5. 简谐运动', dir: '指向平衡位置', mag: '变化 ( $F=-kx$ )', desc: '动能与势能相互转化。' }
+    };
+
+    function setMode(newMode) {
+        mode = newMode;
+        pathPoints = []; 
+        simTime = 0;
+        energyHistory = []; // 切换模式时清空图表
+        
+        document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        const data = uiData[newMode];
+        document.getElementById('infoModeName').innerText = data.title;
+        document.getElementById('infoDir').innerHTML = data.dir;
+        document.getElementById('infoMag').innerHTML = data.mag;
+        document.getElementById('infoDesc').innerHTML = data.desc;
+        if (window.MathJax) MathJax.typesetPromise();
+    }
+
+    requestAnimationFrame(animate);
+</script>
+</body>
+</html>

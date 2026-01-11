@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate DISLab - 虚拟仿真实验室</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <header class="main-header">
+            <div class="logo">
+                <h1>DIS<span>Lab</span></h1>
+                <p>Digital Information System</p>
+            </div>
+            <nav>
+                <ul>
+                    <li class="active"><a href="#"><i class="fas fa-home"></i> 实验室大厅</a></li>
+                    <li><a href="#"><i class="fas fa-folder-open"></i> 我的存档</a></li>
+                    <li><a href="#"><i class="fas fa-cog"></i> 系统设置</a></li>
+                </ul>
+            </nav>
+            
+            <div class="system-status">
+                <p><i class="fas fa-server"></i> 服务器状态: 在线</p>
+                <p><i class="fas fa-user-tie"></i> 南阳一中 张铭戈</p>
+            </div>
+        </header>
+
+        <main class="dashboard" id="dashboard">
+            <div class="welcome-banner">
+                <h2>欢迎来到终极物理实验室</h2>
+                <p>公众号: 戈悟志理琢瑷成器 | 虚拟仿真教学平台</p>
+            </div>
+
+            <div class="module-grid" id="moduleGrid">
+                <div style="grid-column: 1/-1; text-align: center; color: #888; padding: 40px;">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p style="margin-top: 10px;">正在扫描实验室目录...</p>
+                </div>
+            </div>
+            </main>
+
+        <div id="workspace" class="workspace hidden">
+            <div class="toolbar">
+                <div class="left-group">
+                    <button id="backBtn" class="tool-btn danger"><i class="fas fa-arrow-left"></i> 返回</button>
+                    <h3 id="currentExpTitle">实验名称</h3>
+                </div>
+            </div>
+            <div class="work-area">
+                <canvas id="simCanvas"></canvas>
+            </div>
+        </div>
+
+    </div> 
+    
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

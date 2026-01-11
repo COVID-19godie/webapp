@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>卫星星下点轨迹 3D 仿真 (题目可视化)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            pointer-events: none;
+            user-select: none;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 18px; color: #fff; }
+        p { margin: 5px 0; font-size: 14px; color: #ccc; }
+        .legend { display: flex; align-items: center; margin-top: 5px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+<div id="info">
+    <h1>高中物理：卫星星下点轨迹</h1>
+    <div class="legend">
+        <div class="dot" style="background: #ff3333;"></div>
+        <p>卫星甲 (T=16h, i=30°): 向东波浪形</p>
+    </div>
+    <div class="legend">
+        <div class="dot" style="background: #33ff33;"></div>
+        <p>卫星乙 (T=24h, i=60°): 8字形 (IGSO)</p>
+    </div>
+    <p>地球自转周期: 24h</p>
+    <p style="color: #aaa; margin-top:10px;">*轨迹已锁定在地球表面随地球旋转</p>
+</div>
+
+<script>
+    // --- 1. 初始化场景 ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(25, 15, 25);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // 添加灯光
+    const ambientLight = new THREE.AmbientLight(0x404040, 2); // 柔和环境光
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(10, 0, 10);
+    scene.add(dirLight);
+
+    // --- 2. 创建地球 (带经纬网格贴图) ---
+    // 动态生成经纬度贴图函数
+    function createGridTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        
+        // 背景色 (海洋)
+        ctx.fillStyle = '#051e3e'; 
+        ctx.fillRect(0, 0, 1024, 512);
+
+        // 线条样式
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#3a6ea5';
+
+        // 经线
+        for (let i = 0; i <= 360; i += 30) {
+            const x = (i / 360) * 1024;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, 512);
+            ctx.stroke();
+            
+            // 标注
+            if(i % 30 === 0) {
+               ctx.fillStyle = '#66aadd';
+               ctx.font = '12px Arial';
+               ctx.fillText(i + "°", x + 2, 260); 
+            }
+        }
+
+        // 纬线
+        for (let i = -90; i <= 90; i += 30) {
+            const y = ((90 - i) / 180) * 512;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(1024, y);
+            ctx.stroke();
+            
+            ctx.fillStyle = '#66aadd';
+            ctx.fillText(i + "°", 10, y - 2); 
+        }
+        
+        // 赤道加粗
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, 256);
+        ctx.lineTo(1024, 256);
+        ctx.stroke();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+    }
+
+    const earthRadius = 4;
+    const earthGeometry = new THREE.SphereGeometry(earthRadius, 64, 64);
+    const earthMaterial = new THREE.MeshPhongMaterial({ 
+        map: createGridTexture(),
+        specular: 0x111111,
+        shininess: 10
+    });
+    const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+    
+    // 地球组：用于旋转
+    const earthGroup = new THREE.Group();
+    earthGroup.add(earth);
+    
+    // 添加地轴辅助线
+    const axisHelper = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -earthRadius - 2, 0), earthRadius * 2 + 4, 0xffffff, 1, 0.5);
+    scene.add(axisHelper);
+    scene.add(earthGroup);
+
+    // --- 3. 定义物理参数 ---
+    
+    // 假设地球自转周期为 24秒 (仿真中加速)
+    const T_earth = 24; 
+    const omega_earth = (2 * Math.PI) / T_earth;
+
+    // 卫星乙 (B): T = 24h (同步), i = 60度
+    // 半径设为 10 (作为同步轨道单位)
+    const R_B = 10;
+    const T_B = T_earth;
+    const omega_B = (2 * Math.PI) / T_B;
+    const inc_B = THREE.Math.degToRad(60);
+
+    // 卫星甲 (A): T = 16h, i = 30度
+    // 根据开普勒第三定律 R^3 / T^2 = k
+    // (R_A / R_B)^3 = (T_A / T_B)^2
+    // R_A = R_B * (16/24)^(2/3)
+    const R_A = R_B * Math.pow((16/24), 2/3); 
+    const T_A = 16;
+    const omega_A = (2 * Math.PI) / (T_earth * (16/24)); // 调整时间比例
+    const inc_A = THREE.Math.degToRad(30);
+
+    // --- 4. 创建卫星及其轨道 ---
+
+    function createSatellite(color, radius, inclination) {
+        // 卫星物体
+        const geometry = new THREE.SphereGeometry(0.3, 16, 16);
+        const material = new THREE.MeshBasicMaterial({ color: color });
+        const mesh = new THREE.Mesh(geometry, material);
+        
+        // 轨道线 (视觉辅助，显示在惯性空间)
+        const orbitCurve = new THREE.EllipseCurve(
+            0, 0,            // ax, aY
+            radius, radius,  // xRadius, yRadius
+            0, 2 * Math.PI,  // aStartAngle, aEndAngle
+            false,           // aClockwise
+            0                // aRotation
+        );
+        const points = orbitCurve.getPoints(100);
+        const orbitGeo = new THREE.BufferGeometry().setFromPoints(points);
+        const orbitMat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.3 });
+        const orbitLine = new THREE.Line(orbitGeo, orbitMat);
+        
+        // 将轨道线旋转到对应倾角
+        // 初始椭圆在XY平面，我们需要先转90度平放，再倾斜
+        orbitLine.rotation.x = Math.PI / 2; 
+        // 应用倾角 (绕X轴旋转)
+        // 注意：为了让交点在赤道，我们需要构建一个轨道容器
+        const orbitGroup = new THREE.Group();
+        orbitGroup.add(orbitLine);
+        // 这里简化处理：直接绕X轴旋转倾角即可，因为我们不需要特定升交点经度
+        orbitGroup.rotation.x = inclination; 
+        // 也把轨道加进场景
+        scene.add(orbitGroup);
+
+        return { mesh, orbitGroup, radius, inclination };
+    }
+
+    const satA = createSatellite(0xff3333, R_A, inc_A); // 红
+    const satB = createSatellite(0x33ff33, R_B, inc_B); // 绿
+
+    scene.add(satA.mesh);
+    scene.add(satB.mesh);
+
+    // --- 5. 轨迹绘制系统 (星下点) ---
+    // 我们需要把轨迹“画”在地球上，所以轨迹对象必须是 earthGroup 的子对象
+
+    // 创建存储轨迹点的数组
+    const maxPoints = 3000; // 轨迹保留长度
+    
+    function createTrail(color) {
+        const geometry = new THREE.BufferGeometry();
+        // 预分配顶点缓冲区
+        const positions = new Float32Array(maxPoints * 3);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setDrawRange(0, 0); // 初始不绘制
+
+        const material = new THREE.LineBasicMaterial({ color: color, linewidth: 2 });
+        const line = new THREE.Line(geometry, material);
+        
+        // 为了防止深度冲突 (Z-fighting)，让轨迹稍微浮起一点点
+        line.scale.set(1.01, 1.01, 1.01); 
+        
+        earthGroup.add(line); // 关键：添加到地球组，随地球旋转
+        
+        return { line, positions, count: 0, index: 0 };
+    }
+
+    const trailA = createTrail(0xff3333);
+    const trailB = createTrail(0x33ff33);
+
+    // 星下点标记球 (显示当前卫星在地球上的投影)
+    function createSubPointMarker(color) {
+        const g = new THREE.SphereGeometry(0.1, 8, 8);
+        const m = new THREE.MeshBasicMaterial({ color: color });
+        const mesh = new THREE.Mesh(g, m);
+        earthGroup.add(mesh); // 同样随地球转
+        return mesh;
+    }
+    const subPointA = createSubPointMarker(0xff3333);
+    const subPointB = createSubPointMarker(0x33ff33);
+
+
+    // --- 6. 动画循环 ---
+    const clock = new THREE.Clock();
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        const delta = clock.getDelta();
+        time += delta;
+
+        // 1. 地球自转 (绕 Y 轴)
+        // 注意：Three.js中 Y 是向上。
+        const earthRotationAngle = omega_earth * time;
+        earthGroup.rotation.y = earthRotationAngle;
+
+        // 2. 更新卫星位置 (惯性系计算)
+        function updateSatPosition(satObj, omega, timeOffset) {
+            // 计算平近点角
+            const angle = omega * time;
+            
+            // 极坐标转笛卡尔 (在轨道平面内)
+            const x = satObj.radius * Math.cos(angle);
+            const z = satObj.radius * Math.sin(angle); // 这里的z其实是轨道平面的y
+            
+            // 构建向量
+            const pos = new THREE.Vector3(x, 0, z);
+            
+            // 应用倾角旋转 (绕 X 轴)
+            // 先应用和 orbitGroup 一样的旋转
+            pos.applyAxisAngle(new THREE.Vector3(1, 0, 0), satObj.inclination);
+            
+            satObj.mesh.position.copy(pos);
+            return pos;
+        }
+
+        const posA = updateSatPosition(satA, omega_A, 0);
+        const posB = updateSatPosition(satB, omega_B, 0);
+
+        // 3. 计算并绘制星下点
+        function updateTrail(trailObj, subPointMesh, satPosWorld) {
+            // 计算星下点在世界坐标系的位置
+            // 方向：从地心指向卫星，长度：地球半径
+            const subPointWorld = satPosWorld.clone().normalize().multiplyScalar(earthRadius);
+            
+            // 关键步骤：将世界坐标转换为地球的局部坐标
+            // 这样点就会“粘”在地球表面，并随地球转动
+            const subPointLocal = subPointWorld.clone();
+            earthGroup.worldToLocal(subPointLocal);
+
+            // 更新标记球位置
+            subPointMesh.position.copy(subPointLocal);
+
+            // 更新轨迹线
+            const positions = trailObj.line.geometry.attributes.position.array;
+            
+            // 简单的环形缓冲区逻辑
+            if (trailObj.count < maxPoints) {
+                positions[trailObj.count * 3] = subPointLocal.x;
+                positions[trailObj.count * 3 + 1] = subPointLocal.y;
+                positions[trailObj.count * 3 + 2] = subPointLocal.z;
+                trailObj.count++;
+                trailObj.line.geometry.setDrawRange(0, trailObj.count);
+            } else {
+                // 如果满了，我们就把数组往前挪一位 (性能较差但代码简单，适用于演示)
+                // 更好的做法是使用环形索引，但 Line 不支持断点
+                // 这里为了演示流畅，简单重写
+                 for (let i = 0; i < maxPoints - 1; i++) {
+                    positions[i * 3] = positions[(i + 1) * 3];
+                    positions[i * 3 + 1] = positions[(i + 1) * 3 + 1];
+                    positions[i * 3 + 2] = positions[(i + 1) * 3 + 2];
+                }
+                positions[(maxPoints - 1) * 3] = subPointLocal.x;
+                positions[(maxPoints - 1) * 3 + 1] = subPointLocal.y;
+                positions[(maxPoints - 1) * 3 + 2] = subPointLocal.z;
+            }
+            
+            trailObj.line.geometry.attributes.position.needsUpdate = true;
+        }
+
+        updateTrail(trailA, subPointA, posA);
+        updateTrail(trailB, subPointB, posB);
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    // 窗口大小调整
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    animate();
+</script>
+</body>
+</html>

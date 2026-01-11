@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChemSim Pro - 多金属交互版</title>
+    <style>
+        /* ====================
+           STYLE.CSS 
+           ==================== */
+        :root {
+            --bg-color: #050505;
+            --panel-bg: #141414;
+            --primary: #4facfe;
+            --secondary: #00f2fe;
+            --text-main: #f0f0f0;
+            --text-muted: #888;
+            --card-border: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            width: 100vw;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 顶部导航 */
+        header {
+            height: 50px;
+            background: #0f1012;
+            border-bottom: 1px solid #222;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 10;
+        }
+        h1 { font-size: 1.1rem; letter-spacing: 1px; color: var(--primary); font-weight: 800; text-transform: uppercase; }
+
+        .btn {
+            background: #222; color: #ccc; border: 1px solid #444;
+            padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+            transition: 0.2s;
+        }
+        .btn:hover { border-color: var(--primary); color: #fff; background: #333; }
+        .btn-primary { background: var(--primary); color: #000; border: none; font-weight: bold; }
+        .btn-primary:hover { background: var(--secondary); }
+
+        /* 主布局 */
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 360px 1fr 300px; 
+            overflow: hidden;
+        }
+
+        /* --- 左侧：药品区 --- */
+        #inventory {
+            background: var(--panel-bg);
+            border-right: 1px solid #222;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .group-label {
+            font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;
+            border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 10px;
+        }
+
+        .item-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        /* 卡片设计 */
+        .chem-card {
+            background: #1e1e1e;
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            height: 70px;
+            position: relative;
+            cursor: grab;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 6px;
+            user-select: none;
+            overflow: hidden;
+        }
+
+        .chem-card:hover {
+            background: #252525;
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 2;
+        }
+        
+        .chem-card:active { cursor: grabbing; }
+
+        .card-tag { font-size: 0.5rem; color: #555; position: absolute; top: 4px; left: 4px; }
+
+        .card-formula {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-family: 'Arial', sans-serif;
+            font-weight: 900;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .card-icon {
+            position: absolute;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 1.2rem;
+            opacity: 0.2;
+        }
+
+        .card-name {
+            font-size: 0.75rem;
+            color: #ccc;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            z-index: 2;
+        }
+
+        .color-indicator {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 2px;
+            opacity: 0.8;
+        }
+
+        /* --- 中间：试管架 --- */
+        #rack-area {
+            background: radial-gradient(circle at bottom, #1b1b1b, #000);
+            position: relative;
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            padding: 0 40px;
+        }
+
+        #rack-shelf {
+            position: absolute; bottom: 100px; left: 0; width: 100%; height: 10px;
+            background: #333; border-top: 1px solid #555; box-shadow: 0 10px 20px rgba(0,0,0,0.8);
+        }
+
+        .tube-container {
+            position: relative;
+            width: 80px; height: 320px;
+            margin: 0 20px;
+            flex-shrink: 0;
+            z-index: 5;
+            display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+        }
+
+        .test-tube {
+            width: 40px; height: 250px;
+            border: 2px solid rgba(255,255,255,0.2); border-top: none;
+            border-radius: 0 0 20px 20px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.1) 30%, rgba(255,255,255,0.02));
+            position: relative;
+            overflow: hidden;
+            transition: box-shadow 0.3s;
+        }
+        
+        .test-tube.highlight { border-color: var(--primary); box-shadow: 0 0 20px rgba(79, 172, 254, 0.3); }
+
+        .liquid {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 0%;
+            background: rgba(255,255,255,0.05);
+            transition: height 1s ease-out, background-color 1s ease;
+            z-index: 1;
+        }
+
+        /* 固体样式 */
+        .solid {
+            width: 14px; height: 14px;
+            position: absolute; bottom: 10px; 
+            /* left 由JS动态随机控制，不再固定50% */
+            border-radius: 2px;
+            z-index: 2;
+            box-shadow: inset 1px 1px 2px rgba(255,255,255,0.5), 1px 1px 3px rgba(0,0,0,0.8);
+            transition: all 0.5s;
+        }
+        .solid[data-type="Fe"] { height: 25px; width: 6px; border-radius: 1px; }
+        .solid[data-type="Cu"] { width: 18px; height: 4px; border-radius: 2px; transform: rotate(45deg); bottom: 12px; }
+
+        .tube-label {
+            margin-top: 15px; font-family: monospace; font-size: 0.8rem; color: #555;
+            background: #111; padding: 2px 5px; border-radius: 3px;
+        }
+
+        .btn-close {
+            position: absolute; top: -30px; color: #ff5252; cursor: pointer; font-weight: bold;
+            background: rgba(255,0,0,0.1); width: 20px; height: 20px; text-align: center; line-height: 20px; border-radius: 50%;
+            opacity: 0; transition: 0.2s;
+        }
+        .tube-container:hover .btn-close { opacity: 1; top: 0; }
+
+        /* 气泡 */
+        .bubble {
+            position: absolute; 
+            background: rgba(255,255,255,0.6); 
+            border-radius: 50%;
+            pointer-events: none; 
+            z-index: 3;
+            bottom: 15px;
+            /* left 由JS根据固体位置控制 */
+            animation: bubbleRise linear forwards;
+        }
+        
+        @keyframes bubbleRise { 
+            0% { transform: translate(var(--x), 0) scale(0.5); opacity: 0; }
+            20% { opacity: 1; }
+            100% { transform: translate(var(--x), -150px) scale(1.2); opacity: 0; } 
+        }
+
+        /* --- 右侧：数据屏 --- */
+        #info {
+            background: var(--panel-bg);
+            border-left: 1px solid #222;
+            display: flex; flex-direction: column;
+        }
+
+        .monitor-screen {
+            background: #000; padding: 25px;
+            border-bottom: 2px solid #333;
+            min-height: 120px;
+            display: flex; flex-direction: column; justify-content: center;
+        }
+        
+        /* 方程式显示区域 */
+        .eq-text { 
+            color: #ff6b6b; 
+            font-family: 'Segoe UI', sans-serif; 
+            font-size: 1.2rem; 
+            font-weight: bold; 
+            margin: 10px 0; 
+            line-height: 1.4; 
+        }
+        
+        .status-text { color: #888; font-size: 0.85rem; margin-top: 5px; }
+        .info-title { color: var(--primary); font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase; }
+
+        .log-container { flex: 1; overflow-y: auto; padding: 20px; }
+        .log-item { margin-bottom: 10px; font-size: 0.85rem; color: #bbb; border-left: 2px solid #333; padding-left: 10px; line-height: 1.4; }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>ChemSim Pro</h1>
+    <div>
+        <button class="btn btn-primary" onclick="lab.addTube()">+ 添加试管</button>
+        <button class="btn" onclick="lab.reset()">♻ 重置</button>
+    </div>
+</header>
+
+<main>
+    <!-- 药品栏 -->
+    <aside id="inventory">
+        <div class="group-label">酸溶液 / Acid</div>
+        <div class="item-grid" id="acids-grid"></div>
+        
+        <div class="group-label">盐溶液 / Salt</div>
+        <div class="item-grid" id="salts-grid"></div>
+
+        <div class="group-label">金属单质 / Metal</div>
+        <div class="item-grid" id="metals-grid"></div>
+    </aside>
+
+    <!-- 实验台 -->
+    <section id="rack-area">
+        <div id="rack-shelf"></div>
+    </section>
+
+    <!-- 显示屏 -->
+    <aside id="info">
+        <div class="monitor-screen">
+            <div class="info-title">REACTION MONITOR</div>
+            <div class="eq-text" id="display-eq">SYSTEM READY</div>
+            <div class="status-text" id="display-status">任意顺序拖入药品，支持多金属</div>
+        </div>
+        <div class="log-container" id="logs"></div>
+    </aside>
+</main>
+
+<script>
+    /**
+     * 配置数据
+     */
+    const SOLUTIONS = {
+        'HCl': { name: '稀盐酸', formula: 'HCl', type: 'acid', color: 'rgba(255,255,255,0.05)', theme: '#fff' },
+        'H2SO4': { name: '稀硫酸', formula: 'H₂SO₄', type: 'acid', color: 'rgba(255,255,255,0.05)', theme: '#fff' },
+        'CH3COOH': { name: '醋酸', formula: 'CH₃COOH', type: 'acid', color: 'rgba(255,255,255,0.05)', theme: '#fff' },
+        'CuSO4': { name: '硫酸铜', formula: 'CuSO₄', type: 'salt', color: 'rgba(0, 119, 190, 0.6)', theme: '#0077be' },
+        'AgNO3': { name: '硝酸银', formula: 'AgNO₃', type: 'salt', color: 'rgba(255,255,255,0.05)', theme: '#fff' },
+        'FeSO4': { name: '硫酸亚铁', formula: 'FeSO₄', type: 'salt', color: 'rgba(119, 221, 119, 0.3)', theme: '#77dd77' },
+
+        // 潜在产物
+        'MgCl2': { name: '氯化镁', formula: 'MgCl₂', color: 'rgba(255,255,255,0.05)' },
+        'ZnCl2': { name: '氯化锌', formula: 'ZnCl₂', color: 'rgba(255,255,255,0.05)' },
+        'FeCl2': { name: '氯化亚铁', formula: 'FeCl₂', color: 'rgba(119, 221, 119, 0.3)' }, 
+        'MgSO4': { name: '硫酸镁', formula: 'MgSO₄', color: 'rgba(255,255,255,0.05)' },
+        'ZnSO4': { name: '硫酸锌', formula: 'ZnSO₄', color: 'rgba(255,255,255,0.05)' },
+    };
+
+    const METALS = {
+        'Mg': { name: '镁带', formula: 'Mg', color: '#f5f5f5' }, 
+        'Zn': { name: '锌粒', formula: 'Zn', color: '#90a4ae' }, 
+        'Fe': { name: '铁钉', formula: 'Fe', color: '#bdc3c7' }, 
+        'Cu': { name: '铜丝', formula: 'Cu', color: '#d35400' }, 
+        'Ag': { name: '银丝', formula: 'Ag', color: '#ffffff' } 
+    };
+
+    const REACTIONS = {
+        'Mg_HCl': { next: 'MgCl2', bubble: 'fast', dissolve: true, time: 4000, eq: 'Mg + 2HCl → MgCl₂ + H₂↑' },
+        'Mg_H2SO4': { next: 'MgSO4', bubble: 'fast', dissolve: true, time: 4000, eq: 'Mg + H₂SO₄ → MgSO₄ + H₂↑' },
+        'Mg_CuSO4': { next: 'MgSO4', solid: '#d35400', time: 2000, eq: 'Mg + CuSO₄ → MgSO₄ + Cu' }, 
+        'Mg_FeSO4': { next: 'MgSO4', solid: '#424242', time: 2000, eq: 'Mg + FeSO₄ → MgSO₄ + Fe' },
+
+        'Zn_HCl': { next: 'ZnCl2', bubble: 'med', dissolve: true, time: 6000, eq: 'Zn + 2HCl → ZnCl₂ + H₂↑' },
+        'Zn_H2SO4': { next: 'ZnSO4', bubble: 'med', dissolve: true, time: 6000, eq: 'Zn + H₂SO₄ → ZnSO₄ + H₂↑' },
+        'Zn_CuSO4': { next: 'ZnSO4', solid: '#d35400', time: 2000, eq: 'Zn + CuSO₄ → ZnSO₄ + Cu' },
+
+        'Fe_HCl': { next: 'FeCl2', bubble: 'slow', dissolve: true, time: 10000, eq: 'Fe + 2HCl → FeCl₂ + H₂↑' },
+        'Fe_H2SO4': { next: 'FeSO4', bubble: 'slow', dissolve: true, time: 10000, eq: 'Fe + H₂SO₄ → FeSO₄ + H₂↑' },
+        'Fe_CuSO4': { next: 'FeSO4', solid: '#d35400', time: 5000, eq: 'Fe + CuSO₄ → FeSO₄ + Cu' }, 
+        'Fe_AgNO3': { next: 'FeSO4', solid: '#ececec', time: 5000, eq: 'Fe + 2AgNO₃ → Fe(NO₃)₂ + 2Ag' },
+
+        'Cu_AgNO3': { next: 'CuSO4', solid: '#ececec', time: 5000, eq: 'Cu + 2AgNO₃ → Cu(NO₃)₂ + 2Ag' }
+    };
+
+    class Laboratory {
+        constructor() {
+            this.tubeIdCounter = 0;
+            this.tubes = {}; 
+            this.dragItem = null;
+            this.initUI();
+        }
+
+        initUI() {
+            if(document.getElementById('acids-grid').children.length === 0) {
+                this.renderGroup(['HCl', 'H2SO4', 'CH3COOH'], 'acids-grid');
+                this.renderGroup(['CuSO4', 'AgNO3', 'FeSO4'], 'salts-grid');
+                this.renderGroup(['Mg', 'Zn', 'Fe', 'Cu', 'Ag'], 'metals-grid', true);
+            }
+            this.addTube();
+            this.addTube();
+        }
+
+        renderGroup(ids, containerId, isMetal = false) {
+            const container = document.getElementById(containerId);
+            ids.forEach(id => {
+                const data = isMetal ? METALS[id] : SOLUTIONS[id];
+                const div = document.createElement('div');
+                div.className = 'chem-card';
+                div.draggable = true;
+                
+                const colorBar = isMetal ? data.color : data.theme;
+                div.innerHTML = `
+                    <div class="color-indicator" style="background:${colorBar}"></div>
+                    <div class="card-tag">${isMetal ? 'M' : 'Aq'}</div>
+                    <div class="card-formula">${data.formula}</div>
+                    <div class="card-icon">${isMetal ? '⚙️' : '🧪'}</div>
+                    <div class="card-name">${data.name}</div>
+                `;
+
+                div.addEventListener('dragstart', (e) => {
+                    this.dragItem = { id, type: isMetal ? 'metal' : 'sol' };
+                    div.style.opacity = '0.5';
+                });
+                div.addEventListener('dragend', () => div.style.opacity = '1');
+                container.appendChild(div);
+            });
+        }
+
+        addTube() {
+            this.tubeIdCounter++;
+            const tid = this.tubeIdCounter;
+            // metals 变为数组，移除 reacting 锁以允许并行操作
+            this.tubes[tid] = { sol: null, metals: [] };
+
+            const div = document.createElement('div');
+            div.className = 'tube-container';
+            div.id = `tube-${tid}`;
+            div.innerHTML = `
+                <div class="btn-close" onclick="lab.removeTube(${tid})">×</div>
+                <div class="test-tube">
+                    <div class="liquid"></div>
+                </div>
+                <div class="tube-label">No.${tid}</div>
+            `;
+
+            const tubeEl = div.querySelector('.test-tube');
+            
+            tubeEl.addEventListener('dragover', (e) => { e.preventDefault(); tubeEl.classList.add('highlight'); });
+            tubeEl.addEventListener('dragleave', () => tubeEl.classList.remove('highlight'));
+            tubeEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                tubeEl.classList.remove('highlight');
+                this.handleDrop(tid);
+            });
+
+            document.getElementById('rack-shelf').after(div);
+        }
+
+        removeTube(id) {
+            const el = document.getElementById(`tube-${id}`);
+            if(el) el.remove();
+            const state = this.tubes[id];
+            // 清理可能存在的多个计时器
+            if(state && state.metals) {
+                state.metals.forEach(m => {
+                    if(m.timer) clearInterval(m.timer);
+                });
+            }
+            delete this.tubes[id];
+        }
+
+        handleDrop(tid) {
+            if (!this.dragItem) return;
+            const { id, type } = this.dragItem;
+            const state = this.tubes[tid];
+
+            // 1. 拖入溶液
+            if (type === 'sol') {
+                if (state.sol) return this.log(`试管 ${tid} 已有溶液。`);
+                
+                this.fillLiquid(tid, id);
+                
+                // 遍历当前所有金属，全部触发检查
+                if (state.metals.length > 0) {
+                    state.metals.forEach(m => {
+                        this.checkReaction(tid, m.id, id, m.el);
+                    });
+                }
+            } 
+            // 2. 拖入金属 (允许无限叠加)
+            else {
+                // 不再检查是否已有金属
+                this.addSolid(tid, id);
+                
+                // 如果已有溶液，立即触发这个新金属的反应
+                if (state.sol) {
+                    // 获取刚加进去的那个金属（数组最后一个）
+                    const lastMetal = state.metals[state.metals.length - 1];
+                    this.checkReaction(tid, id, state.sol, lastMetal.el);
+                }
+            }
+        }
+
+        fillLiquid(tid, solId) {
+            const sol = SOLUTIONS[solId];
+            this.tubes[tid].sol = solId;
+            const liq = document.getElementById(`tube-${tid}`).querySelector('.liquid');
+            liq.style.height = '60%'; 
+            liq.style.backgroundColor = sol.color;
+            this.updateScreen('已添加溶液', `加入 ${sol.formula}`, '#4facfe');
+        }
+
+        addSolid(tid, metalId) {
+            const metal = METALS[metalId];
+            const tubeEl = document.getElementById(`tube-${tid}`).querySelector('.test-tube');
+            
+            const solid = document.createElement('div');
+            solid.className = 'solid';
+            solid.dataset.type = metalId;
+            solid.style.backgroundColor = metal.color;
+            
+            // 随机水平位置，防止完全重叠
+            const randomLeft = 50 + (Math.random() * 40 - 20); // 30% - 70%
+            solid.style.left = randomLeft + '%';
+            
+            tubeEl.appendChild(solid);
+            
+            // 推入数组
+            this.tubes[tid].metals.push({ id: metalId, el: solid, timer: null });
+            
+            this.updateScreen('已添加金属', `加入 ${metal.formula}`, '#ccc');
+        }
+
+        // 这里的 checkReaction 接收具体的 solidEl DOM元素
+        checkReaction(tid, mId, sId, solidEl) {
+            const key = `${mId}_${sId}`;
+            const res = REACTIONS[key];
+
+            if (res) {
+                this.runReaction(tid, res, solidEl);
+            } else {
+                // 如果没有反应，只在日志记录一下，不刷屏显示
+                this.log(`试管 ${tid}: ${mId} 无反应`);
+            }
+        }
+
+        runReaction(tid, res, solidEl) {
+            // 找到对应的金属对象来存 timer
+            const state = this.tubes[tid];
+            const metalObj = state.metals.find(m => m.el === solidEl);
+            
+            this.updateScreen('反应进行中...', res.eq, '#ff6b6b');
+            this.log(`试管 ${tid}: 反应开始 ${res.eq}`); 
+
+            // 气泡动画
+            if (res.bubble) {
+                const interval = res.bubble === 'fast' ? 100 : 400;
+                if(metalObj) {
+                    metalObj.timer = setInterval(() => this.spawnBubble(tid, solidEl), interval);
+                }
+            }
+
+            // 溶解动画
+            if (res.dissolve) {
+                solidEl.style.transition = `transform ${res.time}ms linear, opacity ${res.time}ms ease`;
+                solidEl.style.transform = 'scale(0.1) rotate(10deg)'; // 稍微旋转
+                // 这里不再用 translateX(-50%) 因为 left 已经是随机定位了
+                solidEl.style.opacity = '0.2';
+            }
+
+            setTimeout(() => {
+                if(metalObj && metalObj.timer) clearInterval(metalObj.timer);
+
+                // 更新溶液 (最后完成的反应决定最终颜色，简单模拟)
+                if (res.next) {
+                    state.sol = res.next;
+                    const nextSol = SOLUTIONS[res.next];
+                    const liq = document.getElementById(`tube-${tid}`).querySelector('.liquid');
+                    if(liq) liq.style.backgroundColor = nextSol.color;
+                    // 日志防止刷屏，只显示变化
+                    this.log(`试管 ${tid}: 溶液变为 ${nextSol.name}`);
+                }
+
+                // 固体变化处理
+                if (res.solid) {
+                    solidEl.style.backgroundColor = res.solid;
+                    solidEl.style.boxShadow = 'inset 0 0 5px rgba(0,0,0,0.8)';
+                } else if (res.dissolve) {
+                    solidEl.remove();
+                    // 从数组中移除该金属
+                    state.metals = state.metals.filter(m => m.el !== solidEl);
+                }
+
+                this.updateScreen('反应结束：产物已生成', res.eq, '#4caf50'); 
+
+            }, res.time);
+        }
+
+        spawnBubble(tid, solidEl) {
+            const tube = document.getElementById(`tube-${tid}`).querySelector('.test-tube');
+            if(!tube || !solidEl) return;
+            
+            const b = document.createElement('div');
+            b.className = 'bubble';
+            const size = Math.random() * 4 + 2;
+            b.style.width = size + 'px'; b.style.height = size + 'px';
+            
+            // 气泡从金属当前的 left 位置升起
+            // 获取 solidEl 的 style.left (例如 "45%")
+            // 这里的 var(--x) 是相对自身偏移，我们可以保持简单随机偏移
+            const offset = (Math.random() * 10 - 5);
+            b.style.left = solidEl.style.left; 
+            
+            b.style.setProperty('--x', offset + 'px');
+            b.style.animationDuration = (Math.random() * 1 + 1) + 's';
+            
+            tube.appendChild(b);
+            setTimeout(() => b.remove(), 2000);
+        }
+
+        updateScreen(status, text, color) {
+            document.getElementById('display-status').innerText = status;
+            const eq = document.getElementById('display-eq');
+            eq.innerText = text;
+            eq.style.color = color;
+        }
+
+        log(msg) {
+            const div = document.createElement('div');
+            div.className = 'log-item';
+            div.innerText = msg;
+            document.getElementById('logs').prepend(div);
+        }
+
+        reset() {
+            document.querySelectorAll('.tube-container').forEach(e => e.remove());
+            this.tubes = {};
+            this.log('--- 系统已重置 ---');
+            this.addTube();
+            this.addTube();
+        }
+    }
+
+    const lab = new Laboratory();
+
+</script>
+</body>
+</html>

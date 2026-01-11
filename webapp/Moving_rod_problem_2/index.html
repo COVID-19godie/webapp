@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>电磁感应双棒 - 比例连接点版</title>
+    
+    <script src="https://cdn.staticfile.org/Chart.js/3.9.1/chart.min.js"></script>
+    <script>MathJax = { tex: { inlineMath: [['$', '$']] }, svg: { fontCache: 'global' } };</script>
+    <script id="MathJax-script" async src="https://cdn.staticfile.org/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { 
+            --primary: #2196F3; --rod1: #2196F3; --rod2: #E91E63; 
+            --bg: #f8f9fa; --panel: #fff; --text: #333; 
+        }
+        body { font-family: "PingFang SC", "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+        
+        .sidebar { width: 340px; background: var(--panel); border-right: 1px solid #ddd; display: flex; flex-direction: column; z-index: 20; padding: 12px; box-shadow: 4px 0 10px rgba(0,0,0,0.05); overflow-y: auto; flex-shrink: 0; }
+        .main { flex: 1; display: flex; flex-direction: column; padding: 12px; gap: 12px; position: relative; overflow: hidden; }
+        
+        .group { background: #fff; padding: 12px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 12px; }
+        .group h3 { margin: 0 0 10px 0; font-size: 14px; border-left: 4px solid var(--primary); padding-left: 8px; color: #555; }
+        .rod2-group h3 { border-left-color: var(--rod2); }
+        
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+        input[type="number"] { width: 70px; padding: 4px 8px; text-align: right; border: 1px solid #ddd; border-radius: 4px; font-family: Consolas, monospace; }
+        input[type="number"]:focus { border-color: var(--primary); outline: none; }
+        
+        .btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+        button { padding: 10px; border: none; border-radius: 6px; color: #fff; cursor: pointer; font-weight: 600; font-size: 14px; transition: 0.2s; }
+        .btn-start { background: #4CAF50; } .btn-pause { background: #FFC107; color: #333; } .btn-reset { background: #F44336; }
+        .btn-apply { width: 100%; background: var(--primary); margin-bottom: 15px; padding: 10px; font-size: 14px; box-shadow: 0 2px 5px rgba(33, 150, 243, 0.2); }
+
+        .canvas-box { flex: 1; min-height: 300px; background: #fff; border-radius: 8px; position: relative; border: 1px solid #ddd; cursor: crosshair; }
+        canvas#sim { width: 100%; height: 100%; display: block; }
+        
+        .charts { height: 260px; flex-shrink: 0; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+        .chart-box { background: #fff; border-radius: 6px; padding: 8px; border: 1px solid #ddd; min-width: 0; }
+
+        .overlay { 
+            position: absolute; top: 12px; right: 12px; 
+            background: rgba(255,255,255,0.92); backdrop-filter: blur(4px);
+            padding: 12px; border-radius: 8px; 
+            font-family: 'Consolas', monospace; font-size: 12px; 
+            pointer-events: none; border: 1px solid rgba(0,0,0,0.1); 
+            min-width: 150px;
+        }
+        .overlay div { margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .val { font-weight: bold; }
+
+        .slider-wrap { display: flex; align-items: center; gap: 8px; background: #f1f3f5; padding: 6px 10px; border-radius: 20px; margin-top: 5px;}
+        input[type="range"] { flex: 1; height: 4px; background: #ddd; -webkit-appearance: none; border-radius: 2px; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--primary); border-radius: 50%; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+        .status-badge {
+            display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; color: #fff; margin-left: 5px;
+        }
+        .status-1 { background: #2196F3; }
+        .status-2 { background: #FF9800; }
+        
+        /* 新增：提示文字样式 */
+        .hint-text { font-size: 11px; color: #7f8c8d; margin-top: -4px; margin-bottom: 4px; text-align: right; font-style: italic; }
+
+        @media (max-width: 850px) {
+            body { flex-direction: column; overflow-y: auto; height: auto; }
+            .sidebar { width: 100%; }
+            .canvas-box { height: 350px; flex: none; }
+            .charts { grid-template-columns: 1fr 1fr; height: 360px; grid-template-rows: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="btns">
+        <button class="btn-start" onclick="app.start()">开始</button>
+        <button class="btn-pause" onclick="app.pause()">暂停</button>
+        <button class="btn-reset" onclick="app.reset()">重置</button>
+    </div>
+    <button class="btn-apply" onclick="app.applyParams()">🔄 点击应用并锁定坐标</button>
+
+    <div class="group">
+        <h3>全局控制</h3>
+        <div class="row"><label>仿真速度</label><span id="txt_speed" style="font-weight:bold; color:var(--primary)">1.0x</span></div>
+        <div class="slider-wrap">
+            <span style="font-size:10px;">慢</span>
+            <input type="range" id="sim_speed" min="0.1" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('txt_speed').innerText = this.value + 'x'">
+            <span style="font-size:10px;">快</span>
+        </div>
+    </div>
+
+    <div class="group">
+        <h3>公共环境</h3>
+        <div class="row"><label>磁感应强度 B (T)</label><input type="number" id="p_B" value="1.0" step="0.1"></div>
+        
+        <div class="row" style="background: #fff8e1; padding: 4px 4px 0 4px; border-radius: 4px 4px 0 0; border:1px solid #ffecb3; border-bottom: none;">
+            <label style="font-weight:bold; color:#F57F17;">连接点位置 (0-1)</label>
+            <input type="number" id="p_splitRatio" value="0.5" step="0.1" min="0.0" max="1.0" style="border-color:#FFC107;">
+        </div>
+        <div style="background: #fff8e1; padding: 0 4px 4px 4px; border-radius: 0 0 4px 4px; border:1px solid #ffecb3; border-top: none; margin-bottom: 5px;">
+            <div class="hint-text">0=蓝棒初始处，1=红棒初始处</div>
+        </div>
+
+        <div class="row" style="background: #e3f2fd; padding: 4px; border-radius: 4px;">
+            <label style="font-weight:bold; color:#1565C0;">初始间距 Δx (m)</label>
+            <input type="number" id="p_dist0" value="2.0" step="0.1" style="border-color:#2196F3;">
+        </div>
+    </div>
+
+    <div class="group">
+        <h3>棒1 (左/蓝)</h3>
+        <div class="row"><label>长度 L1 (m)</label><input type="number" id="p_L1" value="1.0" step="0.1"></div>
+        <div class="row"><label>质量 m1 (kg)</label><input type="number" id="p_m1" value="0.2" step="0.1"></div>
+        <div class="row"><label>电阻 R1 (Ω)</label><input type="number" id="p_R1" value="0.5" step="0.1"></div>
+        <div class="row"><label>初速度 v1 (m/s)</label><input type="number" id="p_v1" value="6.0" step="0.1"></div>
+        <div class="row"><label>外力 F1 (N)</label><input type="number" id="p_F1" value="0.0" step="0.1"></div>
+    </div>
+
+    <div class="group rod2-group">
+        <h3>棒2 (右/红)</h3>
+        <div class="row"><label>长度 L2 (m)</label><input type="number" id="p_L2" value="1.0" step="0.1"></div>
+        <div class="row"><label>质量 m2 (kg)</label><input type="number" id="p_m2" value="0.1" step="0.1"></div>
+        <div class="row"><label>电阻 R2 (Ω)</label><input type="number" id="p_R2" value="0.5" step="0.1"></div>
+        <div class="row"><label>初速度 v2 (m/s)</label><input type="number" id="p_v2" value="0.0" step="0.1"></div>
+        <div class="row"><label>外力 F2 (N)</label><input type="number" id="p_F2" value="0.0" step="0.1"></div>
+    </div>
+    
+    <div class="row" style="justify-content: flex-end; color:#666;">
+        <label style="cursor:pointer; display:flex; align-items:center;">
+            <input type="checkbox" id="chk_collide" checked style="width:auto; margin-right:6px;"> 开启弹性碰撞
+        </label>
+    </div>
+</div>
+
+<div class="main">
+    <div class="canvas-box">
+        <canvas id="sim"></canvas>
+        <div class="overlay">
+            <div><span>时间 t</span> <span class="val" id="val_t">0.00 s</span></div>
+            <div style="border-bottom:1px dashed #ccc; margin:4px 0;"></div>
+            <div><span>状态</span> <span id="val_stage" class="status-badge status-1">宽轨阶段</span></div>
+            <div><span style="color:var(--rod1)">v1</span> <span class="val" id="val_v1">0.00</span></div>
+            <div><span style="color:var(--rod2)">v2</span> <span class="val" id="val_v2">0.00</span></div>
+            <div><span style="color:#6f42c1">I</span> <span class="val" id="val_I">0.00 A</span></div>
+            <div><span>Δx</span> <span class="val" id="val_dist">0.00 m</span></div>
+        </div>
+    </div>
+    <div class="charts">
+        <div class="chart-box"><canvas id="c_v"></canvas></div>
+        <div class="chart-box"><canvas id="c_a"></canvas></div>
+        <div class="chart-box"><canvas id="c_I"></canvas></div>
+        <div class="chart-box"><canvas id="c_E"></canvas></div>
+    </div>
+</div>
+
+<script>
+class Renderer {
+    constructor(canvasId) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext('2d');
+        this.colors = {
+            rod1: ["#42A5F5", "#1565C0"], rod2: ["#EF5350", "#C62828"],
+            rail1: "rgba(33, 150, 243, 0.4)", rail2: "rgba(233, 30, 99, 0.4)", 
+            v: "#4CAF50", F_amp: "#9c27b0", F_ext: "#FF9800"
+        };
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+    }
+
+    resize() {
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width * window.devicePixelRatio;
+        this.canvas.height = rect.height * window.devicePixelRatio;
+        this.width = rect.width; this.height = rect.height;
+        this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+
+    drawArrow(x, y, length, color, label) {
+        if (Math.abs(length) < 5) return;
+        const ctx = this.ctx;
+        const maxLen = 80;
+        const visualLen = Math.sign(length) * Math.min(Math.abs(length), maxLen); 
+        
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2;
+        ctx.moveTo(x, y); ctx.lineTo(x + visualLen, y); ctx.stroke();
+        
+        const head = 6; const dir = Math.sign(length); const ex = x + visualLen;
+        ctx.beginPath(); ctx.moveTo(ex + dir*2, y);
+        ctx.lineTo(ex - dir*head, y - head*0.6); ctx.lineTo(ex - dir*head, y + head*0.6); ctx.fill();
+        
+        if (label) { ctx.font = "bold 10px Arial"; ctx.textAlign = "center"; ctx.fillText(label, ex, y - 8); }
+    }
+
+    draw(phy) {
+        const ctx = this.ctx; const w = this.width, h = this.height;
+        const state = phy.s; 
+        const p = phy.p;
+        const x1 = phy.x1; 
+        const x2 = phy.x2;
+
+        ctx.clearRect(0,0,w,h);
+
+        const cx = (x1 + x2) / 2;
+        const scale = Math.min(100, (w * 0.7) / (Math.abs(x2 - x1) + 1)); 
+        const toX = x => w/2 + (x - cx) * scale;
+        const groundY = h/2;
+
+        // 背景网格
+        ctx.fillStyle = "rgba(0,0,0,0.03)";
+        for(let x=0; x<w; x+=30) for(let y=0; y<h; y+=30) ctx.fillRect(x,y,1,1);
+        ctx.fillStyle = "rgba(0,0,0,0.08)";
+        ctx.font = "14px Arial";
+        for(let x=40; x<w; x+=100) for(let y=40; y<h; y+=100) ctx.fillText("×", x, y);
+
+        const baseH = 80; 
+        const h1 = p.L1 * baseH; 
+        const h2 = p.L2 * baseH; 
+        
+        // --- 绘制逻辑：使用计算好的 splitX ---
+        const splitScreenX = toX(p.splitX);
+
+        // 1. 绘制左侧导轨 (L1) -> 从屏幕左边 画到 拼接点
+        ctx.strokeStyle = this.colors.rail1; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, groundY - h1/2); ctx.lineTo(splitScreenX, groundY - h1/2);
+        ctx.moveTo(0, groundY + h1/2); ctx.lineTo(splitScreenX, groundY + h1/2);
+        ctx.stroke();
+
+        // 2. 绘制右侧导轨 (L2) -> 从拼接点 画到 屏幕右边
+        ctx.strokeStyle = this.colors.rail2; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(splitScreenX, groundY - h2/2); ctx.lineTo(w, groundY - h2/2);
+        ctx.moveTo(splitScreenX, groundY + h2/2); ctx.lineTo(w, groundY + h2/2);
+        ctx.stroke();
+
+        // 3. 绘制拼接
+        if (Math.abs(h1 - h2) > 1) {
+            ctx.strokeStyle = "#999"; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(splitScreenX, groundY - h1/2); ctx.lineTo(splitScreenX, groundY - h2/2);
+            ctx.moveTo(splitScreenX, groundY + h1/2); ctx.lineTo(splitScreenX, groundY + h2/2);
+            ctx.stroke();
+            ctx.fillStyle = "#666";
+            [groundY - h1/2, groundY - h2/2, groundY + h1/2, groundY + h2/2].forEach(y => {
+                ctx.beginPath(); ctx.arc(splitScreenX, y, 3, 0, Math.PI*2); ctx.fill();
+            });
+            // 绘制拼接点坐标文字
+            ctx.fillStyle = "#F57F17"; ctx.font = "10px monospace"; 
+            // 显示相对比例
+            const ratioTxt = document.getElementById('p_splitRatio').value;
+            ctx.fillText(`Split (${ratioTxt})`, splitScreenX, groundY + Math.max(h1,h2)/2 + 10);
+        }
+
+        const drawRod = (x, L, colors, lbl, v, F_ext, m, I, isRod1) => {
+            const sx = toX(x);
+            // 视觉处理
+            const visualL = isRod1 ? p.L1 : p.L2; 
+            const rodH = visualL * baseH + 20; 
+            const rodW = 12;
+
+            ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.fillRect(sx-rodW/2+3, groundY-rodH/2+3, rodW, rodH);
+            const grad = ctx.createLinearGradient(sx-rodW/2, 0, sx+rodW/2, 0);
+            grad.addColorStop(0, colors[0]); grad.addColorStop(1, colors[1]);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.roundRect(sx-rodW/2, groundY-rodH/2, rodW, rodH, 3); ctx.fill();
+
+            ctx.fillStyle = "#333"; ctx.font = "bold 11px Arial"; ctx.textAlign = "center";
+            ctx.fillText(lbl, sx, groundY - rodH/2 - 20);
+
+            if (Math.abs(v) > 0.01) this.drawArrow(sx, groundY, v*15, this.colors.v, "v");
+            if (Math.abs(F_ext) > 0.01) this.drawArrow(sx, groundY+15, F_ext*8, this.colors.F_ext, "F外");
+            
+            // 绘制安培力
+            let activeL = isRod1 ? (phy.stage === 2 ? p.L2 : p.L1) : p.L2;
+            const F_amp = isRod1 ? -p.B*I*activeL : p.B*I*p.L2;
+            if (Math.abs(F_amp) > 0.01) this.drawArrow(sx, groundY-15, F_amp*8, this.colors.F_amp, "F安");
+        };
+
+        drawRod(x1, p.L1, this.colors.rod1, "Rod1", state.v1, p.F1, p.m1, state.I, true);
+        drawRod(x2, p.L2, this.colors.rod2, "Rod2", state.v2, p.F2, p.m2, state.I, false);
+
+        const yD = groundY + Math.max(h1, h2)/2 + 25;
+        ctx.strokeStyle = "#666"; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+        ctx.beginPath();
+        ctx.moveTo(toX(x1), groundY); ctx.lineTo(toX(x1), yD+5);
+        ctx.moveTo(toX(x2), groundY); ctx.lineTo(toX(x2), yD+5);
+        ctx.stroke();
+        ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(toX(x1), yD); ctx.lineTo(toX(x2), yD); ctx.stroke();
+        ctx.fillStyle = "#555"; ctx.fillText(`Δx = ${Math.abs(x2-x1).toFixed(2)}m`, w/2, yD+14);
+    }
+}
+
+class Physics {
+    constructor() { this.reset(); }
+    
+    reset() {
+        this.t = 0; 
+        this.Q_total = 0;
+        
+        // --- 状态控制 ---
+        this.stage = 1; 
+        this.crossData = null; 
+
+        const get = id => parseFloat(document.getElementById(id).value) || 0;
+        
+        // 读取比例
+        const splitRatio = get('p_splitRatio'); 
+
+        this.p = {
+            B: get('p_B'), 
+            dist0: get('p_dist0'),
+            splitRatio: splitRatio, // 保存比例
+            L1: get('p_L1'), m1: get('p_m1'), R1: get('p_R1'), v1: get('p_v1'), F1: get('p_F1'),
+            L2: get('p_L2'), m2: get('p_m2'), R2: get('p_R2'), v2: get('p_v2'), F2: get('p_F2'),
+            collide: document.getElementById('chk_collide').checked
+        };
+        
+        // 计算两棒初始坐标
+        this.x1 = -this.p.dist0/2; 
+        this.x2 = this.p.dist0/2;
+        
+        // --- 核心计算：根据比例计算 splitX ---
+        // 公式： splitX = x1 + ratio * (x2 - x1)
+        // 实际上 x2 - x1 就是 dist0
+        this.p.splitX = this.x1 + this.p.splitRatio * this.p.dist0;
+
+        // 初始检测：如果蓝棒已经在红导轨区域（极端情况比率设为负数）
+        if (this.x1 >= this.p.splitX) {
+            this.stage = 2;
+        }
+
+        this.s = { v1: this.p.v1, v2: this.p.v2, I: 0 };
+        this.history = { t:[], v1:[], v2:[], a1:[], I:[], Q:[] };
+    }
+
+    estimateMaxTime() {
+        const p = this.p;
+        const tau1 = (p.B*p.L1 > 0) ? (p.m1*(p.R1+p.R2))/(p.B*p.L1)**2 : 1;
+        const tau2 = (p.B*p.L2 > 0) ? (p.m2*(p.R1+p.R2))/(p.B*p.L2)**2 : 1;
+        let tMax = Math.max(tau1, tau2) * 5; 
+        if (p.v1 > p.v2) { 
+            const dv = p.v1 - p.v2;
+            if (dv > 0.1) {
+                const tCol = p.dist0 / dv;
+                if (tCol < tMax) tMax = tCol * 2; 
+            }
+        }
+        return Math.min(Math.max(tMax, 2.0), 30.0);
+    }
+
+    getBounds() {
+        const p = this.p;
+        let maxV = Math.max(Math.abs(p.v1), Math.abs(p.v2), 1);
+        if(p.F1) maxV = Math.max(maxV, p.F1*(p.R1+p.R2)/(p.B*p.L1)**2);
+        if(p.F2) maxV = Math.max(maxV, p.F2*(p.R1+p.R2)/(p.B*p.L2)**2);
+        
+        const vB = Math.ceil(maxV * 1.5);
+        const iB = Math.ceil((p.B*Math.max(p.L1,p.L2)*vB)/(p.R1+p.R2) * 1.2) || 1;
+        const aB = Math.ceil(((p.B*iB*Math.max(p.L1,p.L2) + Math.max(p.F1,p.F2))/Math.min(p.m1,p.m2))*1.2);
+        return { v: vB, I: iB, a: aB };
+    }
+
+    step(dt) {
+        const p = this.p; 
+        const s = this.s;
+
+        // --- 核心逻辑：使用计算好的 splitX 判定 ---
+        if (this.stage === 1 && this.x1 >= p.splitX) {
+            this.stage = 2; 
+            
+            this.crossData = {
+                t: this.t,
+                x1: this.x1,
+                v1: s.v1,
+                x2: this.x2,
+                v2: s.v2,
+                I: s.I
+            };
+            
+            console.log(`>>> Stage 2 Triggered! Ratio: ${p.splitRatio}, x=${p.splitX.toFixed(2)}`);
+            console.log("Initial Conditions for Stage 2:", this.crossData);
+        }
+
+        let activeL1 = (this.stage === 2) ? p.L2 : p.L1;
+
+        const E = p.B * activeL1 * s.v1 - p.B * p.L2 * s.v2;
+        s.I = E / (p.R1 + p.R2);
+        
+        const Fa1 = -p.B * s.I * activeL1; 
+        const Fa2 =  p.B * s.I * p.L2;
+        
+        const a1 = (p.F1 + Fa1)/p.m1;
+        const a2 = (p.F2 + Fa2)/p.m2;
+        
+        s.v1 += a1*dt; s.v2 += a2*dt;
+        this.x1 += s.v1*dt; this.x2 += s.v2*dt;
+        this.t += dt;
+        this.Q_total += s.I**2 * (p.R1+p.R2) * dt;
+
+        if (p.collide && this.x1 >= this.x2) {
+            const v1 = s.v1, v2 = s.v2;
+            s.v1 = ((p.m1-p.m2)*v1 + 2*p.m2*v2)/(p.m1+p.m2);
+            s.v2 = ((p.m2-p.m1)*v2 + 2*p.m1*v1)/(p.m1+p.m2);
+            const m = (this.x1+this.x2)/2; this.x1=m-0.01; this.x2=m+0.01;
+        }
+
+        if(this.history.t.length < 1000) { 
+            this.history.t.push(this.t);
+            this.history.v1.push(s.v1); this.history.v2.push(s.v2);
+            this.history.a1.push(a1); this.history.I.push(s.I); this.history.Q.push(this.Q_total);
+        }
+    }
+}
+
+const app = {
+    phy: new Physics(),
+    renderer: new Renderer('sim'),
+    timer: null,
+    
+    start: () => { if(!app.timer) app.loop(); },
+    pause: () => { cancelAnimationFrame(app.timer); app.timer = null; },
+    reset: () => { app.pause(); app.phy.reset(); app.updateCharts(true); app.renderer.draw(app.phy); app.updateUI(); },
+    applyParams: () => { app.reset(); }, 
+
+    loop: () => {
+        const spd = parseFloat(document.getElementById('sim_speed').value)||1;
+        for(let i=0; i<4; i++) app.phy.step(0.01*spd/4);
+        app.renderer.draw(app.phy);
+        app.updateUI();
+        app.updateCharts();
+        app.timer = requestAnimationFrame(app.loop);
+    },
+
+    updateUI: () => {
+        const s = app.phy.s; const p = app.phy.p;
+        document.getElementById('val_t').innerText = app.phy.t.toFixed(2)+" s";
+        document.getElementById('val_v1').innerText = s.v1.toFixed(2);
+        document.getElementById('val_v2').innerText = s.v2.toFixed(2);
+        document.getElementById('val_I').innerText = s.I.toFixed(3)+" A";
+        document.getElementById('val_dist').innerText = Math.abs(app.phy.x2-app.phy.x1).toFixed(2)+" m";
+        
+        const elStage = document.getElementById('val_stage');
+        if(app.phy.stage === 1) {
+            elStage.innerText = "宽轨阶段";
+            elStage.className = "status-badge status-1";
+        } else {
+            elStage.innerText = "窄轨/接触";
+            elStage.className = "status-badge status-2";
+        }
+    },
+
+    charts: {},
+    initCharts: () => {
+        const opts = { 
+            animation: false, maintainAspectRatio: false, responsive: true,
+            plugins: { legend: { display: false }, title: { display: true, font: {size:11} } },
+            elements: { point: { radius: 0 }, line: { borderWidth: 2 } },
+            scales: { 
+                x: { type: 'linear', display: true, title: {display:true, text:'t/s'}, ticks: {maxTicksLimit: 6} },
+                y: { ticks: { font: {size: 10} } } 
+            }
+        };
+        const mk = (id, tit, col) => new Chart(document.getElementById(id), {
+            type: 'line', data: { datasets: [{ borderColor: col, data: [] }] },
+            options: { ...opts, plugins: { ...opts.plugins, title: { text: tit } } }
+        });
+        app.charts.v = new Chart(document.getElementById('c_v'), {
+            type: 'line', data: { datasets: [{label:'v1', borderColor:'#2196F3', data:[]}, {label:'v2', borderColor:'#E91E63', data:[]}] },
+            options: { ...opts, plugins: { ...opts.plugins, title: { text: '速度 (m/s)' } } }
+        });
+        app.charts.a = mk('c_a', '加速度 a1 (m/s²)', '#FF9800');
+        app.charts.I = mk('c_I', '电流 I (A)', '#6f42c1');
+        app.charts.E = mk('c_E', '焦耳热 Q (J)', '#795548');
+    },
+
+    updateCharts: (clear=false) => {
+        if(!app.charts.v) app.initCharts();
+        
+        if(clear) {
+            const b = app.phy.getBounds();
+            const tMax = app.phy.estimateMaxTime(); 
+            
+            const setAx = (c, yMax, yMin) => {
+                c.options.scales.x.max = tMax; 
+                c.options.scales.x.min = 0;
+                if(yMax !== undefined) {
+                    c.options.scales.y.max = yMax;
+                    c.options.scales.y.min = yMin !== undefined ? yMin : -yMax;
+                }
+            };
+
+            setAx(app.charts.v, b.v);
+            setAx(app.charts.a, b.a);
+            setAx(app.charts.I, b.I);
+            setAx(app.charts.E); 
+        }
+
+        const h = app.phy.history;
+        if(h.t.length === 0 && !clear) return;
+        
+        const zip = (arr) => arr.map((v, i) => ({x: h.t[i], y: v}));
+        
+        const up = (c, ...d) => {
+            if(clear) c.data.datasets.forEach(ds => ds.data = []);
+            else d.forEach((arr, i) => c.data.datasets[i].data = zip(arr));
+            c.update('none');
+        };
+
+        up(app.charts.v, h.v1, h.v2);
+        up(app.charts.a, h.a1);
+        up(app.charts.I, h.I);
+        up(app.charts.E, h.Q);
+    }
+};
+
+app.applyParams();
+</script>
+</body>
+</html>
